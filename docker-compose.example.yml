@@ -1,0 +1,48 @@
+services:
+    crafty:
+        container_name: crafty_container
+        image: registry.gitlab.com/crafty-controller/crafty-4:latest
+        restart: always
+
+        environment:
+            TZ: Europe/Berlin
+
+        ports:
+            - "8443:8443"                    # Crafty HTTPS
+            - "8123:8123"                    # Dynmap
+            - "19132:19132/udp"              # Bedrock
+            - "24454:24454/udp"              # Simple Voice Chat
+            - "25500-25600:25500-25600"      # Minecraft Server Ports
+
+        volumes:
+            - /srv/docker/crafty-4/backups:/crafty/backups
+            - /srv/docker/crafty-4/logs:/crafty/logs
+            - /srv/docker/crafty-4/servers:/crafty/servers
+            - /srv/docker/crafty-4/config:/crafty/app/config
+            - /srv/docker/crafty-4/import:/crafty/import
+
+    # ↓↓↓ Neu: Craftynos – diesen Block zu deiner bestehenden Compose hinzufügen ↓↓↓
+    craftynos:
+        container_name: craftynos
+        image: ghcr.io/tammo2701/craftynos:latest
+        restart: always
+        depends_on:
+            - crafty
+
+        environment:
+            TZ: Europe/Berlin
+            CRAFTY_URL: https://crafty:8443
+            CRAFTY_API_TOKEN: HIER_DEN_API_TOKEN_AUS_CRAFTY   # alternativ später in der Oberfläche unter „Einstellungen“ eintragen
+
+        ports:
+            - "8080:8080"                    # Craftynos Weboberfläche
+
+        volumes:
+            # Dieselben Host-Ordner UND dieselben Containerpfade wie bei Crafty!
+            - /srv/docker/crafty-4/backups:/crafty/backups
+            - /srv/docker/crafty-4/logs:/crafty/logs
+            - /srv/docker/crafty-4/servers:/crafty/servers
+            # Eigene Einstellungen von Craftynos (Backup-Ziele, Sync-Status)
+            - /srv/docker/craftynos:/data
+            # Optional: NAS, das auf dem Docker-Host gemountet ist, als lokales Backup-Ziel
+            # - /mnt/nas/minecraft:/mnt/nas

@@ -1,0 +1,21 @@
+{
+  "name": "craftynos",
+  "version": "0.1.0",
+  "description": "Aternos-artige Weboberfläche für Crafty Controller",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "prismarine-nbt": "^2.5.0",
+    "ssh2-sftp-client": "^11.0.0",
+    "undici": "^6.21.0",
+    "webdav": "^5.7.1"
+  }
+}
