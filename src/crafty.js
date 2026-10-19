@@ -2,6 +2,7 @@ import { Agent, fetch } from 'undici';
 import { craftyCfg } from './config.js';
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import fs from 'node:fs';
 
 const agents = {};
 const agent = (insecure) =>
@@ -42,7 +43,7 @@ async function call(method, p, { body, text = false, timeout = 15000, auth = tru
   }
   let res;
   try {
-    res = await fetch(cfg.url + p, {
+    res = await fetch(effectiveUrl(cfg) + p, {
       method,
       headers,
       body: payload,
@@ -88,7 +89,98 @@ function tcpProbe(host, port, ms = 4000) {
 }
 
 /** Prüft Schritt für Schritt: DNS → Port → TLS/API-Anmeldung, damit klar ist, woran es scheitert. */
+// Automatisch gefundene Alternativadresse (z. B. Service-Name statt Host-IP), nur im Speicher
+let detected = null;
+function effectiveUrl(cfg) {
+  return !cfg.raw && detected && detected.from === cfg.url ? detected.url : cfg.url;
+}
+export const getDetected = (cfg) => (detected && detected.from === cfg.url ? detected.url : null);
+export const resetDetected = () => (detected = null);
+
+function gatewayIp() {
+  try {
+    const row = fs
+      .readFileSync('/proc/net/route', 'utf8')
+      .split('\n')
+      .slice(1)
+      .map((l) => l.split('\t'))
+      .find((c) => c[1] === '00000000');
+    return row ? [6, 4, 2, 0].map((i) => parseInt(row[2].slice(i, i + 2), 16)).join('.') : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Probiert typische Adressen durch (Service-Name, Container-Name, host.docker.internal, Gateway). */
+async function scan(cfg) {
+  const u = new URL(cfg.url);
+  const userPort = u.port || '8443';
+  const uniq = (...a) => [...new Set(a)];
+  const pairs = [];
+  for (const host of ['crafty', 'crafty_container']) for (const port of uniq('8443', userPort)) pairs.push([host, port]);
+  for (const host of ['host.docker.internal', gatewayIp(), u.hostname]) {
+    if (host) for (const port of uniq(userPort, '8443')) pairs.push([host, port]);
+  }
+  const seen = new Set();
+  const list = pairs.filter(([h, p]) => {
+    const k = `${h}:${p}`;
+    if (seen.has(k) || (h === u.hostname && p === userPort)) return false;
+    seen.add(k);
+    return true;
+  });
+  const probes = await Promise.all(
+    list.map(async ([host, port]) => {
+      if (!net.isIP(host)) {
+        try {
+          await dns.lookup(host);
+        } catch {
+          return { host, port, state: null };
+        }
+      }
+      const r = await tcpProbe(host, Number(port), 1500);
+      return { host, port, state: r.ok ? 'offen' : r.error };
+    }),
+  );
+  const steps = [];
+  let found = null;
+  for (const p of probes) {
+    if (p.state === null) continue; // Name gibt es im Netzwerk nicht – nicht anzeigen
+    const name = `Alternative ${p.host}:${p.port}`;
+    const url = `${u.protocol}//${p.host}:${p.port}`;
+    if (p.state !== 'offen') {
+      steps.push({ name, ok: false, detail: p.state });
+      continue;
+    }
+    try {
+      const r = await testConnection({ ...cfg, url, raw: true });
+      steps.push({ name, ok: true, detail: `funktioniert (${r.serverCount} Server)` });
+      found ??= { url, serverCount: r.serverCount };
+    } catch (e) {
+      steps.push({ name, ok: false, detail: `Port offen, aber ${e.message}` });
+    }
+  }
+  return { steps, found };
+}
+
+export async function autodetect(cfg) {
+  const alt = await scan(cfg);
+  if (alt.found) detected = { from: cfg.url, url: alt.found.url };
+  return Boolean(alt.found);
+}
+
 export async function diagnose(cfg) {
+  const r = await diagnosePrimary({ ...cfg, raw: true });
+  if (r.ok || !cfg.token || /Token ung/.test(r.error || '')) return r;
+  const alt = await scan(cfg);
+  r.steps.push(...alt.steps);
+  if (alt.found) {
+    detected = { from: cfg.url, url: alt.found.url };
+    return { ok: true, usedUrl: alt.found.url, serverCount: alt.found.serverCount, steps: r.steps };
+  }
+  return r;
+}
+
+async function diagnosePrimary(cfg) {
   const steps = [];
   let u;
   try {

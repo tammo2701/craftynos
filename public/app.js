@@ -753,7 +753,7 @@ async function sConnection(el) {
     result.replaceChildren(h('div', { class: 'progress' }, h('span', { class: 'spinner' }), 'Teste Verbindung …'));
     const r = await send('POST', '/settings/crafty/test', { url: urlIn.value, token: tokIn.value });
     result.replaceChildren(
-      h('div', { class: 'result ' + (r.ok ? 'ok' : 'err') }, r.ok ? `Verbunden mit ${r.url} – ${r.serverCount} Server gefunden.` : r.error),
+      h('div', { class: 'result ' + (r.ok ? 'ok' : 'err') }, r.ok ? (r.usedUrl ? `Die eingetragene URL ist nicht erreichbar, aber ${r.usedUrl} funktioniert (${r.serverCount} Server). Craftynos verwendet diese Adresse automatisch.` : `Verbunden mit ${r.url} – ${r.serverCount} Server gefunden.`) : r.error),
       h('div', { class: 'steps' }, (r.steps || []).map((s) => h('div', { class: 'step ' + (s.ok ? 'ok' : 'err') }, ico(s.ok ? 'check' : 'x', 14), h('b', {}, s.name), h('span', {}, s.detail)))),
     );
   });
@@ -776,7 +776,7 @@ async function sConnection(el) {
         stateRow('Crafty-Datenbank (Servernamen)', v.db ? !v.dbError : false, v.db ? (v.dbError ? 'nicht lesbar' : 'gefunden') : '/crafty/app/config mounten'),
         stateRow('Gefundene Server', v.serverCount > 0, String(v.serverCount))),
       section('Crafty-API (optional)', 'Zusätzlich für Start, Stop, Neustart, Konsole und Live-Status. Eingaben hier haben Vorrang vor den Compose-Variablen.',
-        field('Crafty-URL', urlIn, `Aktuell wirksam: ${a.url} (${SRC[a.urlSource]})`),
+        field('Crafty-URL', urlIn, a.detectedUrl ? `Eingetragene URL nicht erreichbar – verwendet wird automatisch ${a.detectedUrl}. Trage diese Adresse ein, um die Meldung zu beenden.` : `Aktuell wirksam: ${a.url} (${SRC[a.urlSource]})`),
         field('API-Token', tokIn, a.tokenSource === 'none' ? 'In Crafty unter Benutzer → API-Schlüssel erzeugen.' : `Token ist gesetzt (${a.tokenSource === 'ui' ? 'aus den Einstellungen' : 'aus der Compose'}).`),
         h('div', { class: 'btn-row' },
           btn('Verbindung testen', { kind: 'ghost', onclick: test }),

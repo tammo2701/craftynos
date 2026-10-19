@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { env, settings, craftyCfg, normalizeUrl, DEFAULT_BACKUP } from './config.js';
-import { crafty, normalizeStats, unknownStats, testConnection, diagnose } from './crafty.js';
+import { crafty, normalizeStats, unknownStats, testConnection, diagnose, autodetect, getDetected, resetDetected } from './crafty.js';
 import { HttpError, mapPath, safeJoin, listDir, walk, readJson, exists } from './files.js';
 import { parseProps, applyProps } from './props.js';
 import { knownPlayers, playerDetail, resolveUuid } from './players.js';
@@ -38,6 +38,15 @@ async function loadServersUncached() {
       apiList = (await crafty.servers()).data || [];
     } catch (e) {
       apiError = e.message;
+      // Nicht erreichbar? Typische Alternativadressen (Service-Name, host.docker.internal, Gateway) probieren.
+      if (!/Token ung/.test(e.message) && (await autodetect(craftyCfg()).catch(() => false))) {
+        try {
+          apiList = (await crafty.servers()).data || [];
+          apiError = null;
+        } catch (e2) {
+          apiError = e2.message;
+        }
+      }
     }
   }
   const disk = await discoverServers().catch(() => []);
@@ -109,6 +118,7 @@ app.get(
         ok: r.api,
         error: r.apiError,
         url: cfg.url,
+        detectedUrl: getDetected(cfg),
         urlSource: cfg.urlSource,
         tokenSource: cfg.tokenSource,
         envUrl: cfg.envUrl,
@@ -132,6 +142,7 @@ app.put(
         token: clearToken ? '' : token ? String(token).trim() : cur.token,
       },
     });
+    resetDetected();
     cache = { t: 0, v: null };
     res.json({ ok: true });
   }),
