@@ -2,7 +2,7 @@
 
 const S = { cfg: null, timers: [] };
 const $app = document.getElementById('app');
-const $banner = document.getElementById('banner');
+const $conn = document.getElementById('conn');
 
 /* ---------- Helfer ---------- */
 
@@ -22,6 +22,53 @@ function h(tag, props, ...kids) {
     e.append(k.nodeType ? k : document.createTextNode(String(k)));
   }
   return e;
+}
+
+const NS = 'http://www.w3.org/2000/svg';
+const ICONS = {
+  play: 'M7 4l13 8-13 8z',
+  stop: 'M6 6h12v12H6z',
+  restart: 'M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5',
+  download: 'M12 4v11M7 11l5 5 5-5M5 20h14',
+  upload: 'M12 16V5M7 9l5-5 5 5M5 20h14',
+  trash: 'M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13',
+  folder: 'M3 6h6l2 2h10v11H3z',
+  file: 'M6 3h8l4 4v14H6zM14 3v4h4',
+  cloud: 'M7 18a4 4 0 0 1-.6-7.9A6 6 0 0 1 18 9.5 4.3 4.3 0 0 1 17.5 18z',
+  save: 'M5 3h11l3 3v15H5zM8 3v6h8V3M8 21v-7h8v7',
+  plus: 'M12 5v14M5 12h14',
+  edit: 'M4 20h4L19 9l-4-4L4 16z',
+  back: 'M15 5l-7 7 7 7',
+  up: 'M12 19V6M6 11l6-6 6 6',
+  check: 'M5 12l5 5 9-10',
+  x: 'M6 6l12 12M18 6L6 18',
+  heart: 'M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.4-7 10-7 10z',
+  food: 'M15 4a5 5 0 0 1 3.5 8.5L14 17l-7-7 4.5-4.5A5 5 0 0 1 15 4zM7 10l-3 3 2 2 3-3',
+};
+const FILLED = new Set(['play', 'stop', 'heart', 'food']);
+
+function ico(name, size = 16) {
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('viewBox', '0 0 24 24');
+  s.setAttribute('width', size);
+  s.setAttribute('height', size);
+  s.setAttribute('class', 'ico' + (FILLED.has(name) ? ' fill' : ''));
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', ICONS[name]);
+  s.append(p);
+  return s;
+}
+
+function btn(label, { icon, kind = 'primary', sm, title, disabled, onclick, cls } = {}) {
+  return h(
+    'button',
+    { class: `btn k-${kind}${sm ? ' sm' : ''}${label ? '' : ' icon'}${cls ? ' ' + cls : ''}`, title, disabled, onclick },
+    icon && ico(icon, sm ? 14 : 16),
+    label && h('span', {}, label),
+  );
+}
+function abtn(href, label, { icon, kind = 'ghost', sm, title } = {}) {
+  return h('a', { class: `btn k-${kind}${sm ? ' sm' : ''}${label ? '' : ' icon'}`, href, title }, icon && ico(icon, sm ? 14 : 16), label && h('span', {}, label));
 }
 
 async function api(path, opts = {}) {
@@ -46,8 +93,9 @@ const guard = (fn) => async (...a) => {
     toast(e.message, true);
   }
 };
+window.addEventListener('unhandledrejection', (e) => toast(String(e.reason?.message || e.reason), true));
 
-function modal(title, body, buttons = []) {
+function modal(title, body, footer = []) {
   const close = () => bg.remove();
   const bg = h(
     'div',
@@ -55,9 +103,9 @@ function modal(title, body, buttons = []) {
     h(
       'div',
       { class: 'modal' },
-      h('div', { class: 'ph' }, h('span', {}, title), h('button', { class: 'btn-gray btn-sm', onclick: close }, '✕')),
+      h('div', { class: 'ph' }, h('span', {}, title), btn('', { icon: 'x', kind: 'ghost', sm: true, onclick: close, title: 'Schließen' })),
       h('div', { class: 'pb' }, body),
-      buttons.length ? h('div', { class: 'ph', style: 'border-top:1px solid var(--panel-line);border-bottom:0' }, buttons) : null,
+      footer.length ? h('div', { class: 'foot' }, footer) : null,
     ),
   );
   document.body.append(bg);
@@ -86,6 +134,7 @@ const fmtTicks = (t) => {
 };
 const pretty = (id) => id.replace(/_/g, ' ');
 const headUrl = (uuid) => S.cfg.icons.head.replace('{uuid}', uuid);
+const range = (a, b) => [...Array(b - a)].map((_, i) => a + i);
 
 const STATUS = {
   online: 'Online',
@@ -93,10 +142,9 @@ const STATUS = {
   starting: 'Startet …',
   crashed: 'Abgestürzt',
   updating: 'Aktualisiert …',
-  unknown: 'Unbekannt',
+  unknown: 'Dateizugriff',
 };
-const statusBadge = (st) =>
-  h('span', { class: `st-${st}` }, h('span', { class: 'dot' }), STATUS[st] || st);
+const statusEl = (st) => h('span', { class: `status s-${st}` }, h('span', { class: 'dot' }), STATUS[st] || st);
 
 function icon(name) {
   const urls = [S.cfg.icons.item, S.cfg.icons.block];
@@ -111,22 +159,21 @@ function icon(name) {
   return img;
 }
 
-/* ---------- Konfiguration & Banner ---------- */
+/* ---------- Konfiguration & Kopfleiste ---------- */
 
 async function loadConfig() {
   S.cfg = await api('/config');
-  const c = S.cfg.crafty;
-  $banner.replaceChildren();
-  if (!c.hasToken || !c.ok) {
-    $banner.append(
-      h(
-        'div',
-        { class: 'warn' },
-        !c.hasToken ? 'Kein Crafty-API-Token hinterlegt. ' : `Crafty nicht erreichbar: ${c.error} `,
-        h('a', { href: '#/settings' }, 'Verbindung einrichten'),
-      ),
-    );
-  }
+  const { mode, api: a } = S.cfg;
+  let cls = 'bad';
+  let text = 'Keine Server gefunden';
+  if (mode === 'api') (cls = 'ok'), (text = 'Crafty verbunden');
+  else if (mode === 'volumes') (cls = 'warn'), (text = a.configured ? 'API nicht erreichbar · Dateizugriff' : 'Nur Dateizugriff');
+  $conn.className = `conn ${cls}`;
+  $conn.replaceChildren(h('span', { class: 'dot' }), text);
+}
+
+function updateNav(key) {
+  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.k === key));
 }
 
 /* ---------- Router ---------- */
@@ -134,17 +181,16 @@ async function loadConfig() {
 async function route() {
   clearTimers();
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
+  updateNav(parts[0] === 'settings' ? 'settings' : 'servers');
   try {
-    if (!S.cfg) await loadConfig();
-    if (parts[0] === 'settings') await viewSettings();
+    await loadConfig();
+    if (parts[0] === 'settings') await viewSettings(parts[1] || 'connection');
     else if (parts[0] === 's' && parts[1]) await viewServer(parts[1], parts[2] || 'overview');
     else await viewList();
   } catch (e) {
-    $app.replaceChildren(h('h1', {}, 'Fehler'), h('p', {}, e.message));
+    $app.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Fehler')), h('div', { class: 'empty' }, h('p', {}, e.message)));
   }
 }
-window.addEventListener('hashchange', route);
-route();
 
 /* ---------- Serverliste ---------- */
 
@@ -153,39 +199,45 @@ const doAction = guard(async (id, action, label) => {
   toast(label);
 });
 
-function actionButtons(id, st, big = false) {
-  const cls = big ? '' : 'btn-sm';
-  const stop = (e) => e.stopPropagation();
-  const mk = (txt, c, action, label) =>
-    h('button', { class: `${c} ${cls}`, onclick: (e) => (stop(e), doAction(id, action, label)) }, txt);
-  if (st === 'offline' || st === 'crashed' || st === 'unknown') return [mk('▶ Starten', 'btn-green', 'start_server', 'Start angefordert')];
-  return [
-    mk('■ Stoppen', 'btn-red', 'stop_server', 'Stop angefordert'),
-    mk('↻ Neustart', 'btn-orange', 'restart_server', 'Neustart angefordert'),
-  ];
+function controls(id, st, hasApi, sm) {
+  if (!hasApi)
+    return [h('span', { class: 'muted', style: 'font-size:13px' }, 'Start/Stop benötigt die Crafty-API. ', h('a', { href: '#/settings/connection', onclick: (e) => e.stopPropagation() }, 'Einrichten'))];
+  const mk = (label, icon, kind, action, msg) =>
+    btn(label, { icon, kind, sm, onclick: (e) => (e.stopPropagation(), doAction(id, action, msg)) });
+  if (st === 'offline' || st === 'crashed' || st === 'unknown') return [mk('Starten', 'play', 'success', 'start_server', 'Start angefordert')];
+  return [mk('Stoppen', 'stop', 'danger', 'stop_server', 'Stop angefordert'), mk('Neustart', 'restart', 'ghost', 'restart_server', 'Neustart angefordert')];
 }
 
 async function viewList() {
-  const grid = h('div', { class: 'grid' });
-  $app.replaceChildren(h('h1', {}, 'Deine Server'), grid);
+  const wrap = h('div');
+  $app.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Deine Server')), wrap);
   const load = async () => {
     try {
       const list = await api('/servers');
-      grid.replaceChildren(
-        ...list.map((s) =>
-          h(
-            'div',
-            { class: `scard st-${s.status}`, onclick: () => (location.hash = `#/s/${s.id}`) },
-            h('div', { style: 'display:flex;justify-content:space-between;align-items:center' }, h('b', { style: 'font-size:18px' }, s.name), statusBadge(s.status)),
-            h('div', { class: 'row' }, `👥 ${s.online}/${s.max || '–'}`, s.version && `· ${s.version}`, s.port && `· Port ${s.port}`),
-            h('div', { class: 'row' }, `CPU ${s.cpu ?? 0}% · RAM ${s.mem || '–'}`),
-            h('div', { class: 'actions' }, actionButtons(s.id, s.status)),
-          ),
-        ),
+      if (!list.length) {
+        wrap.replaceChildren(
+          h('div', { class: 'empty' }, h('h2', {}, 'Keine Server gefunden'),
+            h('p', {}, 'Craftynos liest Server aus dem gemounteten Ordner ', h('code', {}, '/crafty/servers'), ' oder über die Crafty-API.'),
+            h('p', {}, 'Prüfe, ob die Volumes in der Compose gesetzt sind, und richte bei Bedarf die API ein.'),
+            h('p', {}, abtn('#/settings/connection', 'Verbindung prüfen', { kind: 'primary' }))),
+        );
+        return;
+      }
+      const a = S.cfg.api;
+      wrap.replaceChildren(
+        S.cfg.mode === 'volumes' && a.configured && a.error ? h('div', { class: 'page-note' }, `Crafty-API nicht erreichbar: ${a.error} `, h('a', { href: '#/settings/connection' }, 'Einstellungen')) : null,
+        h('div', { class: 'grid' },
+          list.map((s) =>
+            h('div', { class: `scard s-${s.status}`, onclick: () => (location.hash = `#/s/${s.id}`) },
+              h('div', { class: 'scard-top' }, h('div', { class: 'scard-name' }, s.name), statusEl(s.status)),
+              h('div', { class: 'scard-meta' },
+                h('div', {}, h('small', {}, 'Spieler'), h('b', {}, s.api ? `${s.online}/${s.max || '–'}` : `max. ${s.max || '–'}`)),
+                h('div', {}, h('small', {}, 'Version'), h('b', {}, s.version || '–')),
+                h('div', {}, h('small', {}, 'Port'), h('b', {}, s.port || '–'))),
+              h('div', { class: 'scard-actions' }, controls(s.id, s.status, s.api, true))))),
       );
-      if (!list.length) grid.append(h('p', { class: 'muted' }, 'Keine Server in Crafty gefunden.'));
     } catch (e) {
-      grid.replaceChildren(h('p', { class: 'muted' }, e.message));
+      wrap.replaceChildren(h('div', { class: 'empty' }, h('p', {}, e.message)));
     }
   };
   await load();
@@ -206,18 +258,18 @@ const TABS = [
 async function viewServer(id, tab) {
   let info = await api(`/servers/${id}`);
   const hooks = {};
-  const head = h('div', { class: 'shead' });
+  const head = h('div', { class: 'page-head' });
   const paintHead = () =>
-    head.replaceChildren(h('h1', {}, info.name), statusBadge(info.status), h('span', { class: 'sp', style: 'flex:1' }), actionButtons(id, info.status, true));
+    head.replaceChildren(h('h1', {}, info.name), statusEl(info.status), h('span', { class: 'sp' }), controls(id, info.status, info.api, false));
   paintHead();
   const body = h('div');
   $app.replaceChildren(
-    h('a', { href: '#/' }, '← Alle Server'),
+    h('a', { class: 'back', href: '#/' }, ico('back', 16), 'Alle Server'),
     head,
     h('div', { class: 'tabs' }, TABS.map(([k, label]) => h('a', { href: `#/s/${id}/${k}`, class: k === tab ? 'active' : '' }, label))),
     body,
   );
-  const refresh = async () => {
+  every(async () => {
     try {
       info = await api(`/servers/${id}`);
       paintHead();
@@ -225,8 +277,7 @@ async function viewServer(id, tab) {
     } catch {
       /* nächster Versuch */
     }
-  };
-  every(refresh, 4000);
+  }, 4000);
   const view = { overview: tOverview, players: tPlayers, whitelist: tWhitelist, properties: tProperties, files: tFiles, backups: tBackups }[tab] || tOverview;
   await view(id, info, body, hooks);
 }
@@ -239,11 +290,11 @@ async function tOverview(id, info, el, hooks) {
     tiles.replaceChildren(
       ...[
         ['Status', STATUS[i.status]],
-        ['Spieler', `${i.online}/${i.max || '–'}`],
+        ['Spieler', i.api ? `${i.online}/${i.max || '–'}` : `max. ${i.max || '–'}`],
         ['Version', i.version || '–'],
-        ['CPU', `${i.cpu}%`],
+        ['CPU', i.api ? `${i.cpu}%` : '–'],
         ['RAM', i.mem || '–'],
-        ['Welt', i.worldSize || '–'],
+        ['Welt', i.level],
         ['Port', i.port || '–'],
       ].map(([k, v]) => h('div', { class: 'tile' }, h('small', {}, k), h('b', {}, v))),
     );
@@ -251,7 +302,7 @@ async function tOverview(id, info, el, hooks) {
   hooks.onInfo = paint;
 
   const con = h('div', { class: 'console' });
-  const input = h('input', { placeholder: 'Befehl, z. B. say Hallo (ohne /)', onkeydown: (e) => e.key === 'Enter' && run() });
+  const input = h('input', { placeholder: info.api ? 'Befehl, z. B. say Hallo (ohne /)' : 'Befehle benötigen die Crafty-API', disabled: !info.api, onkeydown: (e) => e.key === 'Enter' && run() });
   const run = guard(async () => {
     const command = input.value.trim();
     if (!command) return;
@@ -263,7 +314,7 @@ async function tOverview(id, info, el, hooks) {
     try {
       const { lines } = await api(`/servers/${id}/logs`);
       const atBottom = con.scrollTop + con.clientHeight >= con.scrollHeight - 30;
-      con.textContent = lines.join('\n');
+      con.textContent = lines.length ? lines.join('\n') : 'Noch keine Logausgabe.';
       if (atBottom) con.scrollTop = con.scrollHeight;
     } catch (e) {
       con.textContent = e.message;
@@ -271,7 +322,9 @@ async function tOverview(id, info, el, hooks) {
   };
   el.append(
     tiles,
-    h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'Konsole'), h('div', { class: 'pb' }, con, h('div', { class: 'cmd' }, input, h('button', { onclick: run }, 'Senden')))),
+    h('div', { class: 'panel' },
+      h('div', { class: 'ph' }, 'Konsole', h('span', { class: 'sp' }), !info.api && h('span', { class: 'panel-sub' }, 'Anzeige aus logs/latest.log')),
+      h('div', { class: 'pb' }, con, h('div', { class: 'cmd' }, input, btn('Senden', { onclick: run, disabled: !info.api })))),
   );
   await loadLogs();
   con.scrollTop = con.scrollHeight;
@@ -281,38 +334,27 @@ async function tOverview(id, info, el, hooks) {
 /* --- Spieler & Inventar --- */
 
 async function tPlayers(id, info, el) {
-  const list = h('div', { class: 'plist' });
+  const list = h('div');
   const detail = h('div');
-  el.append(
-    h(
-      'div',
-      { class: 'pl-layout' },
-      h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'Spieler', h('span', { class: 'sp' }), h('button', { class: 'btn-sm', onclick: () => load() }, '↻')), list),
-      detail,
-    ),
-  );
+  el.append(h('div', { class: 'pl-layout' }, h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'Spieler', h('span', { class: 'sp' }), btn('', { icon: 'restart', kind: 'ghost', sm: true, onclick: () => load(), title: 'Aktualisieren' })), list), detail));
   let selected = null;
   const load = guard(async () => {
     const players = await api(`/servers/${id}/players`);
     list.replaceChildren(
       ...players.map((p) =>
-        h(
-          'div',
-          { class: 'pitem' + (p.uuid === selected ? ' sel' : ''), onclick: () => ((selected = p.uuid), load(), showPlayer(p)) },
+        h('div', { class: 'pitem' + (p.uuid === selected ? ' sel' : ''), onclick: () => ((selected = p.uuid), load(), showPlayer(p)) },
           h('img', { src: headUrl(p.uuid), alt: '' }),
-          h('div', { style: 'flex:1;min-width:0' }, h('b', {}, p.name || p.uuid.slice(0, 8)), h('div', { class: 'muted', style: 'font-size:12px' }, p.hasData ? '' : 'keine Spielerdaten')),
-          p.online && h('span', { class: 'badge green' }, 'online'),
-          p.op && h('span', { class: 'badge orange' }, 'OP'),
-          p.banned && h('span', { class: 'badge red' }, 'gebannt'),
-        ),
+          h('div', { style: 'flex:1;min-width:0' }, h('b', {}, p.name || p.uuid.slice(0, 8)), !p.hasData && h('div', { class: 'muted', style: 'font-size:12px' }, 'keine Spielerdaten')),
+          p.online && h('span', { class: 'chip green' }, 'online'),
+          p.op && h('span', { class: 'chip orange' }, 'OP'),
+          p.banned && h('span', { class: 'chip red' }, 'gebannt')),
       ),
     );
     if (!players.length) list.append(h('div', { class: 'pb muted' }, 'Noch keine Spieler bekannt.'));
   });
   const showPlayer = guard(async (p) => {
     detail.replaceChildren(h('p', { class: 'muted' }, 'Lade …'));
-    const d = await api(`/servers/${id}/players/${p.uuid}`);
-    detail.replaceChildren(playerView(p, d));
+    detail.replaceChildren(playerView(p, await api(`/servers/${id}/players/${p.uuid}`)));
   });
   await load();
 }
@@ -324,54 +366,42 @@ const posStr = (p) => (p ? `X ${p[0]}  Y ${p[1]}  Z ${p[2]}` : '–');
 function playerView(p, d) {
   const out = h('div');
   out.append(
-    h(
-      'div',
-      { class: 'panel' },
-      h(
-        'div',
-        { class: 'phead' },
+    h('div', { class: 'panel' },
+      h('div', { class: 'phead' },
         h('img', { src: headUrl(p.uuid), alt: '' }),
-        h('div', {}, h('h2', { style: 'font-size:24px' }, p.name || p.uuid), h('div', { class: 'muted mono', style: 'font-size:12px' }, p.uuid)),
-        h('span', { style: 'flex:1' }),
-        p.online && h('span', { class: 'badge green' }, 'Online'),
-      ),
-    ),
+        h('div', {}, h('h2', { style: 'font-size:22px' }, p.name || p.uuid), h('div', { class: 'muted mono', style: 'font-size:12px' }, p.uuid)),
+        h('span', { class: 'sp' }),
+        p.online && h('span', { class: 'chip green' }, 'Online'))),
   );
-  if (!d.hasData) out.append(h('p', { class: 'muted' }, 'Für diesen Spieler liegen noch keine Spielerdaten (NBT) vor.'));
+  if (!d.hasData) out.append(h('p', { class: 'muted' }, 'Für diesen Spieler liegen noch keine Spielerdaten vor.'));
   else {
     const hp = d.health ?? 20;
-    const hearts = [...Array(10)].map((_, i) => h('span', { class: hp >= (i + 1) * 2 ? '' : hp > i * 2 ? '' : 'off', style: hp === i * 2 + 1 ? 'opacity:.55' : '' }, '❤'));
-    const foods = [...Array(10)].map((_, i) => h('span', { class: d.food > i * 2 ? '' : 'off', style: d.food > i * 2 ? '' : 'opacity:.25;filter:grayscale(1)' }, '🍗'));
+    const hearts = range(0, 10).map((i) => {
+      const on = hp > i * 2;
+      const e = h('span', { class: 'heart' + (on ? '' : ' off') }, ico('heart', 20));
+      if (hp === i * 2 + 1) e.style.opacity = '.6';
+      return e;
+    });
+    const foods = range(0, 10).map((i) => h('span', { class: 'food' + (d.food > i * 2 ? '' : ' off') }, ico('food', 18)));
     out.append(
-      h(
-        'div',
-        { class: 'panel' },
+      h('div', { class: 'panel' },
         h('div', { class: 'ph' }, 'Leben und Erfahrung'),
-        h(
-          'div',
-          { class: 'pb' },
-          h('div', { style: 'text-align:center;font-weight:700;margin-bottom:4px' }, `Level ${d.xpLevel}`),
+        h('div', { class: 'pb' },
+          h('div', { style: 'text-align:center;font-weight:700;margin-bottom:6px' }, `Level ${d.xpLevel}`),
           h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round((d.xpProgress || 0) * 100)}%` })),
-          h('div', { class: 'hearts', style: 'margin-top:14px' }, hearts, h('span', { class: 'muted', style: 'font-size:13px;margin-left:8px' }, `${hp / 2} / 10`)),
-          h('div', { class: 'hearts food', style: 'margin-top:6px;font-size:18px' }, foods),
-        ),
-      ),
-      h(
-        'div',
-        { class: 'panel' },
+          h('div', { class: 'vitals' }, hearts),
+          h('div', { class: 'vitals' }, foods))),
+      h('div', { class: 'panel' },
         h('div', { class: 'ph' }, 'Informationen'),
-        h(
-          'div',
-          { class: 'pb' },
-          h('div', { class: 'tiles', style: 'margin:0' }, [
-            ['Spielmodus', GM[d.gameMode] ?? d.gameMode],
-            ['Aktuelle Position', `${posStr(d.pos)}\n${dimName(d.dimension)}`],
-            ['Respawn', d.spawn ? posStr(d.spawn) : '–'],
-            ['Letzter Tod', d.lastDeath ? `${posStr(d.lastDeath.pos)}\n${dimName(d.lastDeath.dimension)}` : '–'],
-          ].map(([k, v]) => h('div', { class: 'tile', style: 'background:var(--panel-2);white-space:pre-line' }, h('small', {}, k), h('b', { style: 'font-size:14px' }, v)))),
-          h('p', { class: 'muted', style: 'font-size:12px;margin:10px 0 0' }, `Spielerdaten gespeichert: ${fmtDate(d.updated)} (der Server schreibt sie beim Speichern/Ausloggen)`),
-        ),
-      ),
+        h('div', { class: 'pb' },
+          h('div', { class: 'tiles', style: 'margin:0' },
+            [
+              ['Spielmodus', GM[d.gameMode] ?? d.gameMode],
+              ['Aktuelle Position', `${posStr(d.pos)}\n${dimName(d.dimension)}`],
+              ['Respawn', d.spawn ? posStr(d.spawn) : '–'],
+              ['Letzter Tod', d.lastDeath ? `${posStr(d.lastDeath.pos)}\n${dimName(d.lastDeath.dimension)}` : '–'],
+            ].map(([k, v]) => h('div', { class: 'tile', style: 'background:var(--panel-2);white-space:pre-line' }, h('small', {}, k), h('b', { style: 'font-size:14px' }, v)))),
+          h('p', { class: 'muted', style: 'font-size:12px;margin:10px 0 0' }, `Spielerdaten gespeichert: ${fmtDate(d.updated)} (der Server schreibt sie beim Speichern/Ausloggen)`))),
       inventoryPanel(d),
     );
   }
@@ -394,60 +424,34 @@ function inventoryPanel(d) {
   const ender = bySlot(d.enderChest);
   const grid = h('div', { class: 'inv' });
   const armor = h('div', { class: 'armor' }, [103, 102, 101, 100, -106].map((n) => slotEl(inv.get(n))));
-  const showInv = () => grid.replaceChildren(...[...range(9, 36), ...range(0, 9)].map((n) => slotEl(inv.get(n))));
-  const showEnder = () => grid.replaceChildren(...range(0, 27).map((n) => slotEl(ender.get(n))));
+  const showInv = () => (grid.replaceChildren(...[...range(9, 36), ...range(0, 9)].map((n) => slotEl(inv.get(n)))), (armor.style.display = ''));
+  const showEnder = () => (grid.replaceChildren(...range(0, 27).map((n) => slotEl(ender.get(n)))), (armor.style.display = 'none'));
   showInv();
-  const btnInv = h('button', { class: 'btn-sm', onclick: () => (showInv(), (armor.style.display = '')) }, 'Inventar');
-  const btnEnder = h('button', { class: 'btn-sm btn-gray', onclick: () => (showEnder(), (armor.style.display = 'none')) }, `Endertruhe (${ender.size})`);
-  return h(
-    'div',
-    { class: 'panel' },
-    h('div', { class: 'ph' }, 'Inventar', h('span', { class: 'sp' }), btnInv, btnEnder),
-    h('div', { class: 'pb' }, h('div', { class: 'invwrap' }, armor, grid)),
-  );
+  return h('div', { class: 'panel' },
+    h('div', { class: 'ph' }, 'Inventar', h('span', { class: 'sp' }), btn('Inventar', { sm: true, onclick: showInv }), btn(`Endertruhe (${ender.size})`, { sm: true, kind: 'ghost', onclick: showEnder })),
+    h('div', { class: 'pb' }, h('div', { class: 'invwrap' }, armor, grid)));
 }
-const range = (a, b) => [...Array(b - a)].map((_, i) => a + i);
 
 function statsPanel(s) {
   const col = (title, total, rows, withIcon) =>
-    h(
-      'div',
-      {},
-      h('h3', {}, title),
+    h('div', {}, h('h3', {}, title),
       total != null && h('div', { class: 'sr' }, h('b', { class: 'muted' }, 'Gesamt'), h('span', { style: 'font-weight:700' }, fmtNum(total))),
-      rows.map((r) => h('div', { class: 'sr' }, h('span', {}, withIcon && icon(r.id), pretty(r.id)), h('span', {}, fmtNum(r.count)))),
-    );
+      rows.map((r) => h('div', { class: 'sr' }, h('span', {}, withIcon && icon(r.id), pretty(r.id)), h('span', {}, fmtNum(r.count)))));
   const D = s.distances;
   const dist = [
-    ['Strecke gelaufen', D.walk],
-    ['Strecke gesprintet', D.sprint],
-    ['Strecke gefallen', D.fall],
-    ['Strecke in Boot gefahren', D.boat],
-    ['Strecke geschwommen', D.swim],
-    ['Strecke auf Wasser gelaufen', D.walkOnWater],
-    ['Strecke unter Wasser gelaufen', D.walkUnderWater],
-    ['Strecke geklettert', D.climb],
-    ['Strecke geschlichen', D.crouch],
+    ['Strecke gelaufen', D.walk], ['Strecke gesprintet', D.sprint], ['Strecke gefallen', D.fall],
+    ['Strecke in Boot gefahren', D.boat], ['Strecke geschwommen', D.swim], ['Strecke auf Wasser gelaufen', D.walkOnWater],
+    ['Strecke unter Wasser gelaufen', D.walkUnderWater], ['Strecke geklettert', D.climb], ['Strecke geschlichen', D.crouch],
   ].filter(([, v]) => v);
   const big = (t, v) => h('div', { class: 'bigstat' }, h('b', {}, t), v);
-  return h(
-    'div',
-    { class: 'panel' },
-    h('div', { class: 'ph' }, 'Statistiken'),
-    h(
-      'div',
-      { class: 'pb' },
+  return h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'Statistiken'),
+    h('div', { class: 'pb' },
       h('div', { class: 'statgrid', style: 'margin-bottom:24px' }, big('Spielzeit', fmtTicks(s.playTimeTicks)), big('Spieler Kills', fmtNum(s.playerKills)), big('Tode', fmtNum(s.deaths)), big('K/D', s.deaths ? (s.playerKills / s.deaths).toFixed(2) : fmtNum(s.playerKills))),
-      h(
-        'div',
-        { class: 'statgrid' },
+      h('div', { class: 'statgrid' },
         h('div', {}, h('h3', {}, 'Strecke zurückgelegt (in Blöcken)'), h('div', { class: 'sr' }, h('b', { class: 'muted' }, 'Gesamt'), h('span', { style: 'font-weight:700' }, fmtNum(D.total))), dist.map(([k, v]) => h('div', { class: 'sr' }, h('span', {}, k), h('span', {}, fmtNum(v))))),
         col('Blöcke abgebaut', s.mined.total, s.mined.top, true),
         col('Items verwendet', s.used.total, s.used.top, true),
-        col('Entities getötet', s.killed.total, s.killed.top, false),
-      ),
-    ),
-  );
+        col('Entities getötet', s.killed.total, s.killed.top, false))));
 }
 
 /* --- Whitelist --- */
@@ -458,7 +462,10 @@ async function tWhitelist(id, info, el) {
   const paint = (list) =>
     rows.replaceChildren(
       ...list.map((p) =>
-        h('tr', {}, h('td', {}, h('img', { src: headUrl(p.uuid), style: 'width:24px;height:24px;vertical-align:middle;margin-right:8px;image-rendering:pixelated' }), p.name), h('td', { class: 'mono muted' }, p.uuid), h('td', { class: 'r' }, h('button', { class: 'btn-red btn-sm', onclick: () => remove(p.name) }, 'Entfernen'))),
+        h('tr', {},
+          h('td', {}, h('img', { src: headUrl(p.uuid), style: 'width:24px;height:24px;vertical-align:middle;margin-right:10px;image-rendering:pixelated;border-radius:3px' }), p.name),
+          h('td', { class: 'mono muted' }, p.uuid),
+          h('td', { class: 'r' }, btn('Entfernen', { icon: 'trash', kind: 'ghost danger', sm: true, onclick: () => remove(p.name) }))),
       ),
     );
   const add = guard(async () => {
@@ -473,18 +480,12 @@ async function tWhitelist(id, info, el) {
     toast(`${name} entfernt`);
   });
   el.append(
-    h(
-      'div',
-      { class: 'panel' },
-      h('div', { class: 'ph' }, 'Whitelist', h('span', { class: 'sp' }), info.whitelistEnabled ? h('span', { class: 'badge green' }, 'aktiv') : h('span', { class: 'badge red' }, 'in den Properties deaktiviert')),
-      h(
-        'div',
-        { class: 'pb' },
-        h('div', { class: 'row-form' }, input, h('button', { class: 'btn-green', onclick: add }, '+ Hinzufügen')),
-        h('p', { class: 'muted', style: 'font-size:12px' }, 'Läuft der Server, wird per Konsole (/whitelist add|remove) live geändert, sonst direkt die whitelist.json bearbeitet.'),
-        h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'UUID'), h('th', {}))), rows),
-      ),
-    ),
+    h('div', { class: 'panel' },
+      h('div', { class: 'ph' }, 'Whitelist', h('span', { class: 'sp' }), info.whitelistEnabled ? h('span', { class: 'chip green' }, 'aktiv') : h('span', { class: 'chip red' }, 'in den Properties deaktiviert')),
+      h('div', { class: 'pb' },
+        h('div', { class: 'row-form' }, input, btn('Hinzufügen', { icon: 'plus', kind: 'success', onclick: add })),
+        h('p', { class: 'muted', style: 'font-size:12px' }, info.api ? 'Läuft der Server, wird per Konsole (/whitelist add|remove) live geändert, sonst direkt whitelist.json bearbeitet.' : 'Ohne Crafty-API wird direkt whitelist.json bearbeitet. Läuft der Server, danach /whitelist reload ausführen.'),
+        h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'UUID'), h('th', {}))), rows))),
   );
   guard(async () => paint(await api(`/servers/${id}/whitelist`)))();
 }
@@ -518,8 +519,8 @@ async function tProperties(id, info, el) {
   const { entries } = await api(`/servers/${id}/properties`);
   const vals = Object.fromEntries(entries.map((e) => [e.key, e.value]));
   const dirty = {};
-  const set = (k, v) => ((dirty[k] = String(v)), (vals[k] = String(v)), (keyEls[k].textContent = `${k}=${vals[k]}`));
   const keyEls = {};
+  const set = (k, v) => ((dirty[k] = String(v)), (vals[k] = String(v)), (keyEls[k].textContent = `${k}=${vals[k]}`));
 
   const control = (k, type, opts, invert) => {
     if (type === 'bool') {
@@ -534,30 +535,30 @@ async function tProperties(id, info, el) {
     }
     return h('input', { type: type === 'number' ? 'number' : 'text', value: vals[k] ?? '', oninput: (e) => set(k, e.target.value) });
   };
-
   const card = (k, label, type, opts, wide) => {
     keyEls[k] = h('div', { class: 'key' }, `${k}=${vals[k]}`);
-    return h('div', { class: 'prop', style: wide ? 'grid-column:1/-1' : '' }, h('div', { class: 'top2' }, h('label', {}, label), control(k, type, opts?.invert ? null : opts, opts?.invert)), keyEls[k]);
+    return h('div', { class: 'prop', style: wide ? 'grid-column:1/-1' : '' },
+      h('div', { class: 'top2' }, h('label', {}, label), control(k, type, opts?.invert ? null : opts, opts?.invert)), keyEls[k]);
   };
-
   const known = META.filter(([k]) => k in vals);
   const knownKeys = new Set(META.map(([k]) => k));
   const other = entries.filter((e) => !knownKeys.has(e.key));
   const guessType = (v) => (v === 'true' || v === 'false' ? 'bool' : /^-?\d+$/.test(v) ? 'number' : 'text');
 
   el.append(
-    h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'server.properties', h('span', { class: 'sp' }), info.running && h('span', { class: 'badge orange' }, 'Server läuft – Änderungen greifen nach Neustart')), h('div', { class: 'pb' }, h('div', { class: 'pgrid', style: 'color:var(--text)' }, known.map(([k, l, t, o, w]) => card(k, l, t, t === 'bool' ? o : o, w))))),
-    h('details', { class: 'panel' }, h('summary', { class: 'ph', style: 'cursor:pointer' }, `Erweitert (${other.length})`), h('div', { class: 'pb' }, h('div', { class: 'pgrid', style: 'color:var(--text)' }, other.map((e) => card(e.key, e.key, guessType(e.value), null, false))))),
-    h(
-      'div',
-      { class: 'savebar' },
-      h('button', { class: 'btn-green', onclick: guard(async () => {
+    h('div', { class: 'panel' },
+      h('div', { class: 'ph' }, 'server.properties', h('span', { class: 'sp' }), info.running && h('span', { class: 'chip orange' }, 'Server läuft – Änderungen greifen nach Neustart')),
+      h('div', { class: 'pb' }, h('div', { class: 'pgrid' }, known.map(([k, l, t, o, w]) => card(k, l, t, o, w))))),
+    h('details', { class: 'panel' },
+      h('summary', { class: 'ph' }, `Erweitert (${other.length})`),
+      h('div', { class: 'pb' }, h('div', { class: 'pgrid' }, other.map((e) => card(e.key, e.key, guessType(e.value), null, false))))),
+    h('div', { class: 'savebar' },
+      btn('Speichern', { icon: 'save', kind: 'success', onclick: guard(async () => {
         if (!Object.keys(dirty).length) return toast('Keine Änderungen');
         await send('PUT', `/servers/${id}/properties`, { values: dirty });
         Object.keys(dirty).forEach((k) => delete dirty[k]);
         toast('Gespeichert – Server neu starten, damit es wirksam wird');
-      }) }, '💾 Speichern'),
-    ),
+      }) })),
   );
 }
 
@@ -567,7 +568,7 @@ async function tFiles(id, info, el) {
   let cwd = '';
   const body = h('div');
   const crumbs = h('div', { class: 'crumbs' });
-  const q = (p) => encodeURIComponent(p);
+  const q = encodeURIComponent;
   const join = (a, b) => (a ? `${a}/${b}` : b);
 
   const fileInput = h('input', { type: 'file', multiple: true, style: 'display:none', onchange: guard(async (e) => {
@@ -581,15 +582,14 @@ async function tFiles(id, info, el) {
   }) });
 
   const edit = guard(async (path) => {
-    const text = await api(`/servers/${id}/files/content?path=${q(path)}`);
     const ta = h('textarea', { spellcheck: 'false' });
-    ta.value = text;
+    ta.value = await api(`/servers/${id}/files/content?path=${q(path)}`);
     const m = modal(path, ta, [
-      h('button', { class: 'btn-green', onclick: guard(async () => {
+      btn('Speichern', { icon: 'save', kind: 'success', onclick: guard(async () => {
         await api(`/servers/${id}/files/content?path=${q(path)}`, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: ta.value });
         toast('Gespeichert');
         m.close();
-      }) }, 'Speichern'),
+      }) }),
     ]);
   });
 
@@ -597,27 +597,27 @@ async function tFiles(id, info, el) {
     const list = await api(`/servers/${id}/files?path=${q(cwd)}`);
     const segs = cwd ? cwd.split('/') : [];
     crumbs.replaceChildren(
-      h('a', { onclick: () => ((cwd = ''), load()) }, '📁 Server'),
-      ...segs.map((s, i) => [' / ', h('a', { onclick: () => ((cwd = segs.slice(0, i + 1).join('/')), load()) }, s)]),
+      h('a', { onclick: () => ((cwd = ''), load()) }, 'Server'),
+      ...segs.map((s, i) => [h('span', { class: 'muted' }, '/'), h('a', { onclick: () => ((cwd = segs.slice(0, i + 1).join('/')), load()) }, s)]),
     );
     body.replaceChildren(
       h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', { class: 'r' }, 'Größe'), h('th', {}, 'Geändert'), h('th', {}))),
         h('tbody', {},
-          cwd && h('tr', { class: 'clickable', onclick: () => ((cwd = segs.slice(0, -1).join('/')), load()) }, h('td', { colspan: 4 }, '⬆ ..')),
+          cwd && h('tr', { class: 'clickable', onclick: () => ((cwd = segs.slice(0, -1).join('/')), load()) }, h('td', { colspan: 4 }, ico('up'), '..')),
           list.map((f) => {
             const p = join(cwd, f.name);
             return h('tr', { class: f.dir ? 'clickable' : '', onclick: f.dir ? () => ((cwd = p), load()) : null },
-              h('td', {}, f.dir ? '📁 ' : '📄 ', f.name),
+              h('td', {}, ico(f.dir ? 'folder' : 'file'), f.name),
               h('td', { class: 'r muted' }, fmtBytes(f.size)),
               h('td', { class: 'muted' }, fmtDate(f.mtime)),
               h('td', { class: 'r', onclick: (e) => e.stopPropagation() },
-                !f.dir && h('button', { class: 'btn-sm btn-gray', onclick: () => edit(p) }, 'Bearbeiten'),
-                !f.dir && h('a', { class: 'btn btn-sm', href: `/api/servers/${id}/files/download?path=${q(p)}` }, '⬇'),
-                h('button', { class: 'btn-sm btn-red', onclick: guard(async () => {
-                  if (!confirm(`„${f.name}" wirklich löschen?`)) return;
+                !f.dir && btn('', { icon: 'edit', kind: 'ghost', sm: true, title: 'Bearbeiten', onclick: () => edit(p) }),
+                !f.dir && abtn(`/api/servers/${id}/files/download?path=${q(p)}`, '', { icon: 'download', sm: true, title: 'Herunterladen' }),
+                btn('', { icon: 'trash', kind: 'ghost danger', sm: true, title: 'Löschen', onclick: guard(async () => {
+                  if (!confirm(`„${f.name}“ wirklich löschen?`)) return;
                   await api(`/servers/${id}/files?path=${q(p)}`, { method: 'DELETE' });
                   load();
-                }) }, '🗑')));
+                }) })));
           }))),
     );
   });
@@ -625,13 +625,13 @@ async function tFiles(id, info, el) {
   el.append(
     h('div', { class: 'panel' },
       h('div', { class: 'ph' }, crumbs, h('span', { class: 'sp' }),
-        h('button', { class: 'btn-sm', onclick: () => fileInput.click() }, '⬆ Hochladen'),
-        h('button', { class: 'btn-sm btn-gray', onclick: guard(async () => {
+        btn('Hochladen', { icon: 'upload', sm: true, onclick: () => fileInput.click() }),
+        btn('Ordner', { icon: 'plus', sm: true, kind: 'ghost', onclick: guard(async () => {
           const n = prompt('Name des neuen Ordners');
           if (!n) return;
           await send('POST', `/servers/${id}/files/mkdir?path=${q(join(cwd, n))}`);
           load();
-        }) }, '+ Ordner'),
+        }) }),
         fileInput),
       h('div', { class: 'pb' }, body)),
   );
@@ -640,130 +640,271 @@ async function tFiles(id, info, el) {
 
 /* --- Backups --- */
 
+async function followJob(jobId, box) {
+  for (;;) {
+    const j = await api(`/backup-jobs/${jobId}`);
+    if (j.status === 'running') {
+      box.replaceChildren(h('div', { class: 'progress' }, h('span', { class: 'spinner' }), j.step));
+      await new Promise((r) => setTimeout(r, 1200));
+      continue;
+    }
+    box.replaceChildren();
+    if (j.status === 'error') throw new Error('Backup fehlgeschlagen: ' + j.error);
+    toast(`Backup erstellt: ${j.file}`);
+    return;
+  }
+}
+
 async function tBackups(id, info, el) {
   const targets = await api('/settings/targets');
   const q = encodeURIComponent;
-  const sel = h('select', {}, targets.map((t) => h('option', { value: t.id }, `${t.name} (${t.type})`)));
+  const sel = h('select', { style: 'height:30px;font-size:13px' }, targets.map((t) => h('option', { value: t.id }, t.name)));
   const rows = h('tbody');
+  const prog = h('div');
   const load = guard(async () => {
     const list = await api(`/servers/${id}/backups`);
     rows.replaceChildren(
       ...list.map((f) =>
-        h('tr', {}, h('td', {}, f.rel), h('td', { class: 'r' }, fmtBytes(f.size)), h('td', {}, fmtDate(f.mtime)),
+        h('tr', {},
+          h('td', {}, ico('file'), f.rel),
+          h('td', { class: 'r' }, fmtBytes(f.size)),
+          h('td', {}, fmtDate(f.mtime)),
           h('td', { class: 'r' },
-            h('a', { class: 'btn btn-sm', href: `/api/servers/${id}/backups/download?path=${q(f.rel)}` }, '⬇'),
-            targets.length > 0 && h('button', { class: 'btn-sm btn-gray', title: 'Auf ausgewähltes Ziel kopieren', onclick: guard(async () => {
-              toast('Upload gestartet …');
+            abtn(`/api/servers/${id}/backups/download?path=${q(f.rel)}`, '', { icon: 'download', sm: true, title: 'Herunterladen' }),
+            targets.length > 0 && btn('', { icon: 'cloud', kind: 'ghost', sm: true, title: 'Auf ausgewähltes Ziel kopieren', onclick: guard(async () => {
+              toast('Kopieren gestartet …');
               await send('POST', `/servers/${id}/backups/upload`, { path: f.rel, targetId: sel.value });
               toast('Auf Ziel kopiert');
-            }) }, '☁'),
-            h('button', { class: 'btn-sm btn-red', onclick: guard(async () => {
+            }) }),
+            btn('', { icon: 'trash', kind: 'ghost danger', sm: true, title: 'Löschen', onclick: guard(async () => {
               if (!confirm('Backup wirklich löschen?')) return;
               await api(`/servers/${id}/backups?path=${q(f.rel)}`, { method: 'DELETE' });
               load();
-            }) }, '🗑'))),
+            }) }))),
       ),
     );
     if (!list.length) rows.append(h('tr', {}, h('td', { colspan: 4, class: 'muted' }, 'Noch keine Backups.')));
   });
+  const create = btn('Backup erstellen', { icon: 'plus', kind: 'success', sm: true });
+  create.addEventListener('click', guard(async () => {
+    create.disabled = true;
+    try {
+      const { jobId } = await send('POST', `/servers/${id}/backups/create`);
+      await followJob(jobId, prog);
+    } finally {
+      create.disabled = false;
+      prog.replaceChildren();
+      load();
+    }
+  }));
   el.append(
     h('div', { class: 'panel' },
-      h('div', { class: 'ph' }, 'Backups', h('span', { class: 'sp' }),
-        targets.length ? ['Ziel: ', sel] : h('a', { href: '#/settings' }, 'Backup-Ziel einrichten'),
-        h('button', { class: 'btn-sm', onclick: () => load() }, '↻'),
-        h('button', { class: 'btn-green btn-sm', onclick: guard(async () => {
-          await send('POST', `/servers/${id}/action/backup_server`);
-          toast('Backup in Crafty gestartet');
-          setTimeout(load, 5000);
-        }) }, '+ Backup jetzt erstellen')),
-      h('div', { class: 'pb' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Datei'), h('th', { class: 'r' }, 'Größe'), h('th', {}, 'Erstellt'), h('th', {}))), rows))),
+      h('div', { class: 'ph' }, 'Backups', h('span', { class: 'panel-sub' }, `Ordner „${info.level}“ als ZIP`), h('span', { class: 'sp' }),
+        targets.length ? [h('span', { class: 'panel-sub' }, 'Ziel:'), sel] : abtn('#/settings/backups', 'Ziel einrichten', { sm: true }),
+        create),
+      h('div', { class: 'pb' },
+        !info.api && h('div', { class: 'notice' }, 'Ohne Crafty-API wird die Welt vor dem Backup nicht gespeichert. Am besten Backups bei gestopptem Server erstellen.'),
+        prog,
+        h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Datei'), h('th', { class: 'r' }, 'Größe'), h('th', {}, 'Erstellt'), h('th', {}))), rows))),
   );
   await load();
 }
 
 /* ---------- Einstellungen ---------- */
 
-const TARGET_FIELDS = {
-  local: [['path', 'Zielordner (z. B. gemountetes NAS: /mnt/nas/backups)']],
-  webdav: [
-    ['url', 'WebDAV-URL (Nextcloud: https://cloud.example.com/remote.php/dav/files/USER/)'],
-    ['username', 'Benutzer'],
-    ['password', 'Passwort / App-Passwort', 'password'],
-    ['remoteDir', 'Ordner (z. B. /Minecraft-Backups)'],
-  ],
-  sftp: [
-    ['host', 'Host'],
-    ['port', 'Port (22)'],
-    ['username', 'Benutzer'],
-    ['password', 'Passwort', 'password'],
-    ['remoteDir', 'Ordner (z. B. /volume1/backups)'],
-  ],
-};
-
-async function viewSettings() {
-  await loadConfig();
-  const c = S.cfg.crafty;
-  const urlIn = h('input', { value: c.url, style: 'width:100%' });
-  const tokIn = h('input', { type: 'password', placeholder: c.hasToken ? '•••••••• (gesetzt)' : 'API-Token aus Crafty (Profil → API-Schlüssel)', style: 'width:100%' });
-
-  const conn = h('div', { class: 'panel' },
-    h('div', { class: 'ph' }, 'Crafty-Verbindung', h('span', { class: 'sp' }), c.ok ? h('span', { class: 'badge green' }, 'verbunden') : h('span', { class: 'badge red' }, 'nicht verbunden')),
-    h('div', { class: 'pb' },
-      h('div', { class: 'form-grid' }, h('label', {}, 'Crafty-URL', urlIn), h('label', {}, 'API-Token', tokIn)),
-      c.fromEnv && h('p', { class: 'muted' }, 'Token kommt aus der Umgebungsvariable CRAFTY_API_TOKEN und hat Vorrang.'),
-      h('p', {}, h('button', { onclick: guard(async () => {
-        await send('PUT', '/settings/crafty', { url: urlIn.value.trim(), token: tokIn.value.trim() });
-        await loadConfig();
-        toast(S.cfg.crafty.ok ? 'Verbunden' : 'Gespeichert, aber keine Verbindung: ' + S.cfg.crafty.error, !S.cfg.crafty.ok);
-        viewSettings();
-      }) }, 'Speichern & testen'))),
+async function viewSettings(tab) {
+  const body = h('div');
+  const tabs = [['connection', 'Verbindung'], ['backups', 'Backups']];
+  $app.replaceChildren(
+    h('div', { class: 'page-head' }, h('h1', {}, 'Einstellungen')),
+    h('div', { class: 'tabs' }, tabs.map(([k, l]) => h('a', { href: `#/settings/${k}`, class: k === tab ? 'active' : '' }, l))),
+    body,
   );
-
-  // Backup-Ziele
-  const targets = await api('/settings/targets');
-  const typeSel = h('select', {}, [['local', 'Lokaler Ordner / NAS-Mount'], ['webdav', 'Nextcloud / WebDAV'], ['sftp', 'SFTP (NAS, Server)']].map(([v, l]) => h('option', { value: v }, l)));
-  const nameIn = h('input', { placeholder: 'Name, z. B. Synology' });
-  const autoCb = h('input', { type: 'checkbox' });
-  const fieldsBox = h('div', { class: 'form-grid' });
-  let inputs = {};
-  const paintFields = () => {
-    inputs = {};
-    fieldsBox.replaceChildren(...TARGET_FIELDS[typeSel.value].map(([k, l, t]) => (inputs[k] = h('input', { type: t || 'text' }), h('label', {}, l, inputs[k]))));
-  };
-  typeSel.addEventListener('change', paintFields);
-  paintFields();
-
-  const tlist = h('div', {}, targets.length ? '' : h('p', { class: 'muted' }, 'Noch keine Ziele.'),
-    targets.map((t) => h('div', { class: 'row-form', style: 'border-bottom:1px solid var(--panel-line);padding-bottom:10px' },
-      h('b', {}, t.name), h('span', { class: 'badge blue' }, t.type), t.auto && h('span', { class: 'badge green' }, 'Auto-Sync'),
-      h('span', { class: 'muted' }, t.path || t.url || t.host || ''),
-      h('span', { style: 'flex:1' }),
-      h('button', { class: 'btn-sm', onclick: guard(async () => { await send('POST', `/settings/targets/${t.id}/test`); toast('Verbindung OK'); }) }, 'Testen'),
-      h('button', { class: 'btn-sm btn-red', onclick: guard(async () => { if (!confirm('Ziel löschen?')) return; await api(`/settings/targets/${t.id}`, { method: 'DELETE' }); viewSettings(); }) }, 'Löschen'))));
-
-  const tp = h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'Backup-Ziele'),
-    h('div', { class: 'pb' }, tlist, h('h2', { style: 'margin:18px 0 10px' }, 'Neues Ziel'),
-      h('div', { class: 'row-form' }, typeSel, nameIn, h('label', { style: 'display:flex;gap:6px;align-items:center' }, autoCb, 'Neue Backups automatisch hierhin kopieren')),
-      fieldsBox,
-      h('p', {}, h('button', { class: 'btn-green', onclick: guard(async () => {
-        const body = { type: typeSel.value, name: nameIn.value || typeSel.value, auto: autoCb.checked };
-        for (const [k, el] of Object.entries(inputs)) body[k] = el.value.trim();
-        await send('POST', '/settings/targets', body);
-        toast('Ziel gespeichert');
-        viewSettings();
-      }) }, '+ Ziel speichern'))));
-
-  // Auto-Sync
-  const sync = await api('/settings/sync');
-  const enCb = h('input', { type: 'checkbox', checked: sync.enabled });
-  const ivIn = h('input', { type: 'number', min: 1, value: sync.intervalMin, style: 'width:90px' });
-  const sp = h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'Automatischer Backup-Sync'),
-    h('div', { class: 'pb' },
-      h('div', { class: 'row-form' }, h('label', { style: 'display:flex;gap:6px;align-items:center' }, enCb, 'Aktiv, alle'), ivIn, 'Minuten',
-        h('button', { onclick: guard(async () => { await send('PUT', '/settings/sync', { enabled: enCb.checked, intervalMin: ivIn.value }); toast('Gespeichert'); }) }, 'Speichern'),
-        h('button', { class: 'btn-gray', onclick: guard(async () => { await send('POST', '/settings/sync/run'); toast('Sync gestartet'); setTimeout(viewSettings, 4000); }) }, 'Jetzt synchronisieren')),
-      h('p', { class: 'muted', style: 'font-size:12px' }, 'Kopiert neue Crafty-Backups aller Server auf alle Ziele mit „Auto-Sync".'),
-      h('div', { class: 'console', style: 'height:160px' }, sync.log.map((l) => `${new Date(l.t).toLocaleTimeString('de-DE')}  ${l.msg}`).join('\n') || 'Noch keine Aktivität.')));
-
-  $app.replaceChildren(h('h1', {}, 'Einstellungen'), conn, tp, sp);
+  if (tab === 'backups') await sBackups(body);
+  else await sConnection(body);
 }
+
+const section = (title, desc, ...content) =>
+  h('div', { class: 'set-sec' }, h('div', { class: 'lead' }, h('b', {}, title), h('span', {}, desc)), h('div', {}, content));
+
+const field = (label, input, hint) => h('div', { class: 'field' }, h('label', {}, label), input, hint && h('small', {}, hint));
+const stateRow = (label, ok, text) => h('div', { class: 'state-row' }, h('span', { class: 'lbl' }, label), h('span', { class: `chip ${ok === true ? 'green' : ok === false ? 'red' : ''}` }, text));
+
+async function sConnection(el) {
+  const a = S.cfg.api;
+  const v = S.cfg.volumes;
+  const SRC = { ui: 'aus den Einstellungen', env: 'aus der Compose (CRAFTY_URL)', default: 'Standardwert' };
+  const urlIn = h('input', { value: a.urlSource === 'ui' ? a.url : '', placeholder: a.envUrl, autocomplete: 'off' });
+  const tokIn = h('input', { type: 'password', placeholder: a.tokenSource === 'none' ? 'API-Token einfügen' : 'Gesetzt – leer lassen, um beizubehalten', autocomplete: 'off' });
+  const result = h('div');
+
+  const test = guard(async () => {
+    result.replaceChildren(h('div', { class: 'progress' }, h('span', { class: 'spinner' }), 'Teste Verbindung …'));
+    const r = await send('POST', '/settings/crafty/test', { url: urlIn.value, token: tokIn.value });
+    result.replaceChildren(h('div', { class: 'result ' + (r.ok ? 'ok' : 'err') }, r.ok ? `Verbunden mit ${r.url} – ${r.serverCount} Server gefunden.` : r.error));
+  });
+  const save = guard(async () => {
+    await send('PUT', '/settings/crafty', { url: urlIn.value, token: tokIn.value });
+    toast('Gespeichert');
+    await route();
+  });
+  const clearTok = guard(async () => {
+    await send('PUT', '/settings/crafty', { clearToken: true });
+    toast('Token entfernt');
+    await route();
+  });
+
+  el.append(
+    h('div', { class: 'panel' },
+      section('Dateizugriff (Volumes)', 'Pflicht. Darüber liest und bearbeitet Craftynos Server, Spieler, Whitelist, Properties, Dateien und Backups.',
+        stateRow(`${v.root}/servers`, v.serversDirOk, v.serversDirOk ? 'gemountet' : 'nicht gefunden'),
+        stateRow(`${v.root}/backups`, v.backupsDirOk, v.backupsDirOk ? 'gemountet' : 'nicht gefunden'),
+        stateRow('Crafty-Datenbank (Servernamen)', v.db ? (v.dbError ? false : true) : null, v.db ? (v.dbError ? 'nicht lesbar' : 'gefunden') : 'optional – /crafty/app/config mounten'),
+        stateRow('Gefundene Server', v.serverCount > 0, String(v.serverCount))),
+      section('Crafty-API (optional)', 'Zusätzlich für Start, Stop, Neustart, Konsole und Live-Status. Eingaben hier haben Vorrang vor den Compose-Variablen.',
+        field('Crafty-URL', urlIn, `Aktuell wirksam: ${a.url} (${SRC[a.urlSource]})`),
+        field('API-Token', tokIn, a.tokenSource === 'none' ? 'In Crafty unter Benutzer → API-Schlüssel erzeugen.' : `Token ist gesetzt (${a.tokenSource === 'ui' ? 'aus den Einstellungen' : 'aus der Compose'}).`),
+        h('div', { class: 'btn-row' },
+          btn('Verbindung testen', { kind: 'ghost', onclick: test }),
+          btn('Speichern', { kind: 'success', onclick: save }),
+          a.tokenSource === 'ui' && btn('Token entfernen', { kind: 'ghost danger', onclick: clearTok })),
+        result,
+        a.configured && !a.ok && a.error && h('div', { class: 'result err' }, `Letzter Fehler: ${a.error}`))),
+  );
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+function previewName(fmt) {
+  const d = new Date();
+  const m = { server: 'Survival', world: 'world', YYYY: d.getFullYear(), MM: pad2(d.getMonth() + 1), DD: pad2(d.getDate()), HH: pad2(d.getHours()), mm: pad2(d.getMinutes()), ss: pad2(d.getSeconds()) };
+  m.date = `${m.YYYY}-${m.MM}-${m.DD}`;
+  m.time = `${m.HH}-${m.mm}-${m.ss}`;
+  const s = String(fmt || '').replace(/\{(\w+)\}/g, (x, k) => (k in m ? m[k] : x)).replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
+  return (s || 'Backup') + '.zip';
+}
+
+const TARGET_TYPES = {
+  local: { label: 'Ordner / NAS', fields: [['path', 'Zielordner', '/mnt/nas/minecraft', 'text', 'Pfad im Container. Ein NAS bindest du als Volume ein (siehe README).']] },
+  webdav: {
+    label: 'Nextcloud / WebDAV',
+    fields: [
+      ['url', 'WebDAV-URL', 'https://cloud.example.com/remote.php/dav/files/BENUTZER/', 'text', 'Nextcloud: unten links in den Dateien unter „Einstellungen“ zu finden.'],
+      ['username', 'Benutzername', ''],
+      ['password', 'Passwort', '', 'password', 'Ein App-Passwort ist empfohlen.'],
+      ['remoteDir', 'Ordner', '/Minecraft-Backups'],
+    ],
+  },
+  sftp: {
+    label: 'SFTP',
+    fields: [
+      ['host', 'Host', '192.168.1.10'],
+      ['port', 'Port', '22'],
+      ['username', 'Benutzername', ''],
+      ['password', 'Passwort', '', 'password'],
+      ['remoteDir', 'Ordner', '/volume1/backups'],
+    ],
+  },
+};
+const targetDest = (t) => (t.type === 'local' ? t.path : t.type === 'webdav' ? `${t.url}${t.remoteDir || ''}` : `${t.host}:${t.port || 22}${t.remoteDir || ''}`);
+
+function targetModal(existing, onSaved) {
+  let type = existing?.type || 'local';
+  const nameIn = h('input', { value: existing?.name || '', placeholder: 'z. B. Synology NAS' });
+  const autoCb = h('input', { type: 'checkbox', checked: existing ? existing.auto : true });
+  const segBox = h('div', { class: 'seg' });
+  const fieldsBox = h('div');
+  const result = h('div');
+  let inputs = {};
+  const paint = () => {
+    segBox.replaceChildren(...Object.entries(TARGET_TYPES).map(([k, t]) => h('button', { class: k === type ? 'on' : '', onclick: () => ((type = k), paint()) }, t.label)));
+    inputs = {};
+    fieldsBox.replaceChildren(
+      ...TARGET_TYPES[type].fields.map(([k, label, ph, kind, hint]) => {
+        const i = h('input', { type: kind || 'text', placeholder: kind === 'password' && existing?.hasPassword ? 'unverändert' : ph || '', value: kind === 'password' ? '' : existing && existing.type === type ? existing[k] || '' : '' });
+        inputs[k] = i;
+        return field(label, i, hint);
+      }),
+    );
+  };
+  paint();
+  const collect = () => ({ id: existing?.id, type, name: nameIn.value, auto: autoCb.checked, ...Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value])) });
+  const m = modal(existing ? 'Ziel bearbeiten' : 'Ziel hinzufügen',
+    h('div', {}, segBox, field('Name', nameIn), fieldsBox,
+      h('label', { class: 'checkrow' }, autoCb, 'Neue Backups automatisch hierhin kopieren'), result),
+    [
+      btn('Testen', { kind: 'ghost', onclick: guard(async () => {
+        result.replaceChildren(h('div', { class: 'progress' }, h('span', { class: 'spinner' }), 'Teste …'));
+        const r = await send('POST', '/settings/targets/test', collect());
+        result.replaceChildren(h('div', { class: 'result ' + (r.ok ? 'ok' : 'err') }, r.ok ? 'Verbindung erfolgreich.' : r.error));
+      }) }),
+      h('span', { class: 'sp' }),
+      btn('Abbrechen', { kind: 'ghost', onclick: () => m.close() }),
+      btn('Speichern', { kind: 'success', onclick: guard(async () => {
+        await send('POST', '/settings/targets', collect());
+        m.close();
+        toast('Ziel gespeichert');
+        onSaved();
+      }) }),
+    ]);
+}
+
+async function sBackups(el) {
+  const cfg = S.cfg.backup;
+  const targets = await api('/settings/targets');
+  const sync = await api('/settings/sync');
+
+  const fmtIn = h('input', { value: cfg.format, class: 'mono' });
+  const prev = h('div', { class: 'preview' }, previewName(cfg.format));
+  fmtIn.addEventListener('input', () => (prev.textContent = previewName(fmtIn.value)));
+  const folderCb = h('input', { type: 'checkbox', checked: cfg.includeFolder !== false });
+  const chips = ['{server}', '{world}', '{date}', '{time}', '{YYYY}', '{MM}', '{DD}', '{HH}', '{mm}', '{ss}'].map((c) =>
+    h('button', { onclick: () => (fmtIn.setRangeText(c, fmtIn.selectionStart ?? fmtIn.value.length, fmtIn.selectionEnd ?? fmtIn.value.length, 'end'), fmtIn.dispatchEvent(new Event('input')), fmtIn.focus()) }, c));
+
+  const saveFmt = guard(async () => {
+    S.cfg.backup = await send('PUT', '/settings/backup', { format: fmtIn.value, includeFolder: folderCb.checked });
+    toast('Gespeichert');
+  });
+  const reset = () => ((fmtIn.value = '{server} {date} {time}'), fmtIn.dispatchEvent(new Event('input')));
+
+  const logBox = h('div', { class: 'log' }, sync.log.map((l) => `${new Date(l.t).toLocaleTimeString('de-DE')}  ${l.msg}`).join('\n') || 'Noch keine Übertragungen.');
+  const list = h('div', {},
+    targets.length
+      ? targets.map((t) =>
+          h('div', { class: 'target' },
+            h('div', { class: 'tinfo' }, h('div', { class: 'tname' }, t.name), h('div', { class: 'tdest' }, `${TARGET_TYPES[t.type].label} · ${targetDest(t)}`)),
+            t.auto && h('span', { class: 'chip green' }, 'Auto-Kopie'),
+            btn('Bearbeiten', { kind: 'ghost', sm: true, onclick: () => targetModal(t, () => viewSettings('backups')) }),
+            btn('', { icon: 'trash', kind: 'ghost danger', sm: true, title: 'Löschen', onclick: guard(async () => {
+              if (!confirm(`Ziel „${t.name}“ löschen?`)) return;
+              await api(`/settings/targets/${t.id}`, { method: 'DELETE' });
+              viewSettings('backups');
+            }) })))
+      : h('p', { class: 'muted', style: 'margin-top:0' }, 'Noch keine Ziele. Backups liegen nur im Crafty-Backup-Ordner.'));
+
+  el.append(
+    h('div', { class: 'panel' },
+      section('Backup-Format', 'Gesichert wird immer der World-Ordner (level-name) als ZIP-Datei.',
+        field('Dateiname', fmtIn, 'Platzhalter per Klick einfügen. Doppelpunkte und andere unzulässige Zeichen werden automatisch entfernt.'),
+        h('div', { class: 'chips-row' }, chips),
+        h('div', { class: 'preview' }, 'Vorschau'),
+        prev,
+        h('label', { class: 'checkrow' }, folderCb, 'World-Ordner im ZIP als Unterordner ablegen'),
+        h('div', { class: 'btn-row' }, btn('Speichern', { icon: 'save', kind: 'success', onclick: saveFmt }), btn('Standard', { kind: 'ghost', onclick: reset }))),
+      section('Zusätzliche Ziele', 'Kopien der ZIP-Dateien auf ein NAS, Nextcloud oder einen SFTP-Server. Lokal bleibt immer eine Kopie im Crafty-Backup-Ordner.',
+        list,
+        h('div', { class: 'btn-row', style: 'margin-top:14px' },
+          btn('Ziel hinzufügen', { icon: 'plus', onclick: () => targetModal(null, () => viewSettings('backups')) }),
+          targets.some((t) => t.auto) && btn('Jetzt abgleichen', { icon: 'cloud', kind: 'ghost', onclick: guard(async () => {
+            toast('Abgleich läuft …');
+            const r = await send('POST', '/settings/sync/run');
+            logBox.textContent = r.log.map((l) => `${new Date(l.t).toLocaleTimeString('de-DE')}  ${l.msg}`).join('\n') || 'Nichts zu übertragen.';
+            toast('Abgleich fertig');
+          }) })),
+        targets.some((t) => t.auto) && h('div', { style: 'margin-top:14px' }, h('h3', {}, 'Letzte Übertragungen'), logBox))),
+  );
+}
+
+/* ---------- Start ---------- */
+
+window.addEventListener('hashchange', route);
+route();

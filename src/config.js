@@ -20,17 +20,20 @@ export const env = {
 fs.mkdirSync(dataDir, { recursive: true });
 const file = path.join(dataDir, 'settings.json');
 
+export const DEFAULT_BACKUP = { format: '{server} {date} {time}', includeFolder: true };
+
 const defaults = {
   crafty: { url: '', token: '' },
+  backup: { ...DEFAULT_BACKUP },
   targets: [],
-  autoSync: { enabled: false, intervalMin: 60 },
 };
 
 let state = load();
 
 function load() {
   try {
-    return { ...structuredClone(defaults), ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return { ...structuredClone(defaults), ...j, backup: { ...DEFAULT_BACKUP, ...(j.backup || {}) } };
   } catch {
     return structuredClone(defaults);
   }
@@ -44,11 +47,31 @@ export const settings = {
   },
 };
 
+export function normalizeUrl(u) {
+  let s = String(u || '').trim();
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  try {
+    return new URL(s).origin;
+  } catch {
+    return s.replace(/\/+$/, '');
+  }
+}
+
+/**
+ * Reihenfolge: Eingabe in der Oberfläche > Umgebungsvariable (Compose) > Standardwert.
+ */
 export function craftyCfg() {
+  const ui = state.crafty || {};
+  const envUrl = normalizeUrl(process.env.CRAFTY_URL);
+  const uiUrl = normalizeUrl(ui.url);
+  const envToken = process.env.CRAFTY_API_TOKEN || '';
   return {
-    url: (process.env.CRAFTY_URL || state.crafty?.url || 'https://crafty:8443').replace(/\/$/, ''),
-    token: process.env.CRAFTY_API_TOKEN || state.crafty?.token || '',
+    url: uiUrl || envUrl || 'https://crafty:8443',
+    token: ui.token || envToken,
     insecure: (process.env.CRAFTY_INSECURE_TLS ?? 'true') !== 'false',
-    fromEnv: Boolean(process.env.CRAFTY_API_TOKEN),
+    urlSource: uiUrl ? 'ui' : envUrl ? 'env' : 'default',
+    tokenSource: ui.token ? 'ui' : envToken ? 'env' : 'none',
+    envUrl: envUrl || 'https://crafty:8443',
   };
 }

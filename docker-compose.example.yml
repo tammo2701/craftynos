@@ -31,8 +31,10 @@ services:
 
         environment:
             TZ: Europe/Berlin
-            CRAFTY_URL: https://crafty:8443
-            CRAFTY_API_TOKEN: HIER_DEN_API_TOKEN_AUS_CRAFTY   # alternativ später in der Oberfläche unter „Einstellungen“ eintragen
+            # Optional (nur für Start/Stop/Neustart/Konsole). Ohne Token arbeitet Craftynos über die Volumes.
+            # Alternativ in der Oberfläche unter „Einstellungen → Verbindung“ eintragen (hat Vorrang).
+            # CRAFTY_URL: https://crafty:8443
+            # CRAFTY_API_TOKEN: HIER_DEN_API_TOKEN_AUS_CRAFTY
 
         ports:
             - "8080:8080"                    # Craftynos Weboberfläche
@@ -42,7 +44,9 @@ services:
             - /srv/docker/crafty-4/backups:/crafty/backups
             - /srv/docker/crafty-4/logs:/crafty/logs
             - /srv/docker/crafty-4/servers:/crafty/servers
-            # Eigene Einstellungen von Craftynos (Backup-Ziele, Sync-Status)
+            # Optional, aber empfohlen: Crafty-Datenbank (wird nur gelesen) für die echten Servernamen
+            - /srv/docker/crafty-4/config:/crafty/app/config
+            # Eigene Einstellungen von Craftynos (Backup-Ziele, Format)
             - /srv/docker/craftynos:/data
-            # Optional: NAS, das auf dem Docker-Host gemountet ist, als lokales Backup-Ziel
+            # Optional: auf dem Host gemountetes NAS als lokales Backup-Ziel
             # - /mnt/nas/minecraft:/mnt/nas

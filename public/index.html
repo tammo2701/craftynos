@@ -4,18 +4,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Craftynos</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛏️</text></svg>" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' rx='7' fill='%2322c98a'/%3E%3Cpath d='M14 6l7 4v8l-7 4-7-4v-8zM7 10l7 4 7-4M14 14v8' fill='none' stroke='%230b3a28' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <header class="top">
-      <a class="brand" href="#/">⛏️ Craftynos</a>
-      <nav>
-        <a href="#/">Server</a>
-        <a href="#/settings">Einstellungen</a>
-      </nav>
+      <div class="top-in">
+        <a class="brand" href="#/">
+          <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+            <rect width="28" height="28" rx="7" fill="#22c98a" />
+            <path d="M14 6l7 4v8l-7 4-7-4v-8zM7 10l7 4 7-4M14 14v8" fill="none" stroke="#0b3a28" stroke-width="2" stroke-linejoin="round" />
+          </svg>
+          <span>Craftynos</span>
+        </a>
+        <nav id="nav">
+          <a href="#/" data-k="servers">Server</a>
+          <a href="#/settings" data-k="settings">Einstellungen</a>
+        </nav>
+        <a id="conn" class="conn" href="#/settings/connection"></a>
+      </div>
     </header>
-    <div id="banner"></div>
     <main id="app"></main>
     <div id="toasts"></div>
     <script type="module" src="/app.js"></script>

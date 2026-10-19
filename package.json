@@ -12,6 +12,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "archiver": "^7.0.1",
     "express": "^4.21.2",
     "prismarine-nbt": "^2.5.0",
     "ssh2-sftp-client": "^11.0.0",

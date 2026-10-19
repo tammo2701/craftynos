@@ -12,8 +12,24 @@ export class CraftyError extends Error {
   }
 }
 
-async function call(method, p, { body, text = false, timeout = 15000, auth = true } = {}) {
-  const cfg = craftyCfg();
+function explain(e, url) {
+  const code = [e.cause?.code, e.code].find((c) => typeof c === 'string') || '';
+  const hints = {
+    ENOTFOUND: 'Hostname nicht auflösbar. Läuft Craftynos im selben Docker-Netzwerk? Sonst die IP-Adresse des Hosts verwenden.',
+    ECONNREFUSED: 'Verbindung abgelehnt. Stimmt der Port (Standard 8443)?',
+    EHOSTUNREACH: 'Host nicht erreichbar.',
+    ETIMEDOUT: 'Zeitüberschreitung.',
+    UND_ERR_CONNECT_TIMEOUT: 'Zeitüberschreitung beim Verbinden.',
+    ERR_SSL_WRONG_VERSION_NUMBER: 'Crafty spricht HTTPS. Die URL mit https:// angeben.',
+    EPROTO: 'Crafty spricht HTTPS. Die URL mit https:// angeben.',
+    DEPTH_ZERO_SELF_SIGNED_CERT: 'Selbstsigniertes Zertifikat (CRAFTY_INSECURE_TLS=true setzen).',
+    SELF_SIGNED_CERT_IN_CHAIN: 'Selbstsigniertes Zertifikat (CRAFTY_INSECURE_TLS=true setzen).',
+  };
+  return `Crafty unter ${url} nicht erreichbar${code ? ` (${code})` : ''}. ${hints[code] || e.cause?.message || e.message}`;
+}
+
+async function call(method, p, { body, text = false, timeout = 15000, auth = true, cfg } = {}) {
+  cfg ||= craftyCfg();
   if (auth && !cfg.token) throw new CraftyError('Kein Crafty-API-Token konfiguriert', 503);
   const headers = {};
   if (auth) headers.Authorization = `Bearer ${cfg.token}`;
@@ -32,20 +48,17 @@ async function call(method, p, { body, text = false, timeout = 15000, auth = tru
       signal: AbortSignal.timeout(timeout),
     });
   } catch (e) {
-    throw new CraftyError(`Crafty nicht erreichbar (${cfg.url}): ${e.cause?.code || e.message}`);
+    throw new CraftyError(explain(e, cfg.url));
   }
   const data = await res.json().catch(() => null);
-  if (!res.ok || data?.status === 'error') {
-    throw new CraftyError(
-      data?.error_data || data?.error || `Crafty antwortete mit HTTP ${res.status}`,
-      res.status === 403 ? 403 : 502,
-    );
-  }
+  if (res.status === 401 || res.status === 403)
+    throw new CraftyError(`Token ungültig oder ohne Berechtigung (HTTP ${res.status})`, 502);
+  if (!res.ok || data?.status === 'error')
+    throw new CraftyError(data?.error_data || data?.error || `Crafty antwortete mit HTTP ${res.status}`, 502);
   return data;
 }
 
 export const crafty = {
-  ping: () => call('GET', '/api/v2/crafty/check', { auth: false, timeout: 5000 }),
   servers: () => call('GET', '/api/v2/servers'),
   stats: (id) => call('GET', `/api/v2/servers/${id}/stats`),
   action: (id, action) => call('POST', `/api/v2/servers/${id}/action/${action}`),
@@ -56,6 +69,12 @@ export const crafty = {
     }),
   logs: (id, file = false) => call('GET', `/api/v2/servers/${id}/logs?file=${file}&colors=false&raw=false`),
 };
+
+/** Testet beliebige Zugangsdaten, ohne sie zu speichern. */
+export async function testConnection(cfg) {
+  const r = await call('GET', '/api/v2/servers', { cfg, timeout: 8000 });
+  return { serverCount: Array.isArray(r.data) ? r.data.length : 0 };
+}
 
 export function parsePlayers(v) {
   if (Array.isArray(v)) return v.map((p) => (typeof p === 'object' ? p.name : String(p)));
@@ -72,6 +91,22 @@ export function parsePlayers(v) {
 }
 
 const truthy = (v) => v === true || v === 'True' || v === 'true';
+
+export const unknownStats = () => ({
+  status: 'unknown',
+  running: false,
+  cpu: 0,
+  mem: '',
+  memPercent: 0,
+  online: 0,
+  max: 0,
+  players: [],
+  version: '',
+  desc: '',
+  started: '',
+  worldSize: '',
+  port: null,
+});
 
 export function normalizeStats(s) {
   const r = { ...s, ...(s && typeof s.data === 'object' && !Array.isArray(s.data) ? s.data : {}) };
