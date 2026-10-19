@@ -151,14 +151,41 @@ const STATUS = {
 };
 const statusEl = (st) => h('span', { class: `status s-${st}` }, h('span', { class: 'dot' }), STATUS[st] || st);
 
+const ICON_ALIASES = {
+  snow_block: ['snow'],
+  grass_block: ['grass_block_side', 'grass'],
+  dirt_path: ['dirt_path_side', 'dirt'],
+  crafting_table: ['crafting_table_front', 'oak_planks'],
+  furnace: ['furnace_front', 'furnace'],
+  blast_furnace: ['blast_furnace_front', 'furnace'],
+  smoker: ['smoker_front', 'furnace'],
+  chest: ['oak_planks'],
+  trapped_chest: ['oak_planks'],
+  ender_chest: ['obsidian'],
+  barrel: ['barrel_side', 'oak_planks'],
+  tnt: ['tnt_side'],
+  bookshelf: ['bookshelf'],
+  pumpkin: ['pumpkin_side'],
+  melon: ['melon_side'],
+  hay_block: ['hay_block_side'],
+  sandstone: ['sandstone'],
+  farmland: ['farmland'],
+  short_grass: ['grass'],
+  tall_grass: ['tall_grass_top', 'grass'],
+  oak_door: ['oak_door_bottom', 'oak_planks'],
+  oak_trapdoor: ['oak_trapdoor', 'oak_planks'],
+};
+
 function icon(name) {
-  const urls = [S.cfg.icons.item, S.cfg.icons.block];
+  const id = name.replace(/^minecraft:/, '');
+  const candidates = [id, ...(ICON_ALIASES[id] || [])];
+  const urls = [
+    S.cfg.icons.item.replace('{name}', id),
+    ...candidates.map((candidate) => S.cfg.icons.block.replace('{name}', candidate)),
+  ];
   let step = 0;
   const img = h('img', { alt: name, loading: 'lazy' });
-  const next = () => {
-    if (step < urls.length) img.src = urls[step++].replace('{name}', name);
-    else img.replaceWith(h('span', { class: 'txt' }, pretty(name)));
-  };
+  const next = () => step < urls.length ? (img.src = urls[step++]) : img.replaceWith(h('span', { class: 'txt' }, pretty(id)));
   img.addEventListener('error', next);
   next();
   return img;
