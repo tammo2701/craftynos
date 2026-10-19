@@ -15,9 +15,9 @@ Aternos-artige Weboberfläche **neben** [Crafty Controller](https://craftycontro
 - **Whitelist:** hinzufügen/entfernen (live per Konsole, sonst direkt `whitelist.json`)
 - **server.properties:** Karten für die wichtigsten Optionen, alle weiteren unter „Erweitert“
 - **Dateimanager:** durchsuchen, bearbeiten, hoch-/herunterladen, löschen
-- **Backups:** immer **nur der World-Ordner** (`level-name`) als **ZIP**, erstellt von Craftynos selbst und abgelegt im Crafty-Backup-Ordner des Servers. Läuft der Server und ist die API verfügbar, wird vorher `save-off` / `save-all flush` ausgeführt (danach `save-on`).
+- **Backups:** immer **nur der World-Ordner** (`level-name`) als **ZIP**, erstellt von Craftynos selbst und abgelegt im Crafty-Backup-Ordner des Servers. Der globale Zeitplan erstellt täglich zur eingestellten Uhrzeit ein Backup, wenn sich die Welt seit dem letzten Backup geändert hat. Einzelne Server lassen sich davon ausnehmen. Läuft der Server und ist die API verfügbar, wird vorher `save-off` / `save-all flush` ausgeführt (danach `save-on`).
   - **Dateiname einstellbar** (Einstellungen → Backups), Standard: `{server} {date} {time}` → `Survival 2026-10-19 14-30-05.zip` (Leerzeichen, Uhrzeit ohne Doppelpunkt; Doppelpunkte werden immer entfernt). Platzhalter: `{server} {world} {date} {time} {YYYY} {MM} {DD} {HH} {mm} {ss}`.
-  - **Zusätzliche Ziele** in der Oberfläche: lokaler Ordner / NAS-Mount, Nextcloud (WebDAV), SFTP – optional mit automatischer Kopie neuer Backups.
+  - **Zusätzliche Ziele** in der Oberfläche: lokaler Ordner / NAS-Mount, Nextcloud (WebDAV), SFTP – Backups werden beim Erstellen direkt an das ausgewählte Ziel übertragen; Ziele mit Auto-Kopie erhalten neue Backups ebenfalls.
 
 **Noch nicht gebaut (kommt zum Schluss):** Webhooks und Discord-Bot-Integration, Login.
 

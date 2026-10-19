@@ -230,12 +230,12 @@ async function diagnosePrimary(cfg) {
 }
 
 export function parsePlayers(v) {
-  if (Array.isArray(v)) return v.map((p) => (typeof p === 'object' ? p.name : String(p)));
+  if (Array.isArray(v)) return v.map((p) => (p && typeof p === 'object' ? p.name : String(p)));
   if (typeof v !== 'string' || !v || v === '[]') return [];
   for (const candidate of [v, v.replace(/'/g, '"')]) {
     try {
       const j = JSON.parse(candidate);
-      if (Array.isArray(j)) return j.map((p) => (typeof p === 'object' ? p.name : String(p)));
+      if (Array.isArray(j)) return j.map((p) => (p && typeof p === 'object' ? p.name : String(p)));
     } catch {
       /* weiter */
     }
@@ -244,6 +244,11 @@ export function parsePlayers(v) {
 }
 
 const truthy = (v) => v === true || v === 'True' || v === 'true';
+const textValue = (v) => {
+  if (typeof v !== 'string' && typeof v !== 'number') return '';
+  const text = String(v).trim();
+  return /^(false|null|undefined|\[object .+\])$/i.test(text) ? '' : text;
+};
 
 export const unknownStats = () => ({
   status: 'unknown',
@@ -278,10 +283,10 @@ export function normalizeStats(s) {
     memPercent: Number(r.mem_percent) || 0,
     online: Number(r.online) || 0,
     max: Number(r.max) || 0,
-    players: parsePlayers(r.players),
-    version: r.version || '',
-    desc: r.desc || '',
-    started: r.started || '',
+    players: parsePlayers(r.players).filter((p) => typeof p === 'string' && p.trim()),
+    version: textValue(r.version),
+    desc: textValue(r.desc),
+    started: textValue(r.started),
     worldSize: r.world_size || '',
     port: r.server_port || null,
   };

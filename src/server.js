@@ -53,6 +53,9 @@ async function loadServersUncached() {
   const diskMap = new Map(disk.map((d) => [d.server_id, d]));
   const list = (apiList ?? disk).map((s) => {
     const merged = { ...(diskMap.get(s.server_id) || {}), ...s };
+    merged.server_id = String(merged.server_id || s.server_id || '');
+    merged.server_name = plainText(merged.server_name, plainText(diskMap.get(s.server_id)?.server_name, merged.server_id || 'Unbenannter Server'));
+    merged.type = plainText(merged.type);
     merged.path = s.path || diskMap.get(s.server_id)?.path || path.join(env.craftyRoot, 'servers', s.server_id);
     merged._dir = mapPath(merged.path);
     const bp = merged.backup_path;
@@ -95,6 +98,11 @@ async function propsOf(dir) {
   }
 }
 const prop = (entries, key, def) => entries.find((e) => e.key === key)?.value ?? def;
+const plainText = (value, fallback = '') => {
+  if (typeof value !== 'string' && typeof value !== 'number') return fallback;
+  const text = String(value).trim();
+  return !text || /^(false|null|undefined|\[object .+\])$/i.test(text) ? fallback : text;
+};
 
 async function stateOf(id) {
   if (!(await loadServers()).api) return unknownStats();
@@ -166,8 +174,18 @@ app.get('/api/settings/backup', (_req, res) => res.json(settings.get().backup));
 
 app.put('/api/settings/backup', (req, res) => {
   const b = req.body || {};
-  const format = String(b.format ?? '').trim() || DEFAULT_BACKUP.format;
-  settings.save({ backup: { format: format.slice(0, 120), includeFolder: b.includeFolder !== false } });
+  const current = settings.get().backup;
+  const format = String(b.format ?? current.format ?? '').trim() || DEFAULT_BACKUP.format;
+  const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.time ?? current.time)) ? String(b.time ?? current.time) : current.time;
+  const excludedServers = Array.isArray(b.excludedServers) ? [...new Set(b.excludedServers.map(String))] : current.excludedServers;
+  settings.save({ backup: {
+    ...current,
+    format: format.slice(0, 120),
+    includeFolder: b.includeFolder === undefined ? current.includeFolder : b.includeFolder !== false,
+    enabled: b.enabled === undefined ? current.enabled !== false : Boolean(b.enabled),
+    time,
+    excludedServers,
+  } });
   res.json(settings.get().backup);
 });
 
@@ -188,7 +206,7 @@ app.get(
         }
         if (!st.max) st.max = Number(prop(props, 'max-players', 0)) || 0;
         const port = st.port || s.server_port || Number(prop(props, 'server-port', 0)) || null;
-        return { id: s.server_id, name: s.server_name, type: s.type, ...st, port, api };
+        return { id: String(s.server_id), name: plainText(s.server_name, s.server_id || 'Unbenannter Server'), type: plainText(s.type), ...st, port, api };
       }),
     );
     res.json(out);
@@ -203,7 +221,7 @@ app.get(
     const st = await stateOf(server.server_id).catch(() => unknownStats());
     res.json({
       id: server.server_id,
-      name: server.server_name,
+      name: plainText(server.server_name, server.server_id || 'Unbenannter Server'),
       type: server.type,
       path: server.path,
       level: prop(props, 'level-name', 'world'),
@@ -217,7 +235,7 @@ app.get(
   }),
 );
 
-const ACTIONS = ['start_server', 'stop_server', 'restart_server', 'kill_server'];
+const ACTIONS = ['start_server', 'stop_server', 'restart_server', 'kill_server', 'update_executable'];
 app.post(
   '/api/servers/:id/action/:action',
   h(async (req, res) => {
@@ -282,6 +300,31 @@ app.get(
 );
 
 /* ---------- Whitelist ---------- */
+
+app.post(
+  '/api/servers/:id/players/:uuid/action',
+  h(async (req, res) => {
+    const { server, dir } = await ctx(req.params.id);
+    await requireApi();
+    const player = (await knownPlayers(dir, prop(await propsOf(dir), 'level-name', 'world'))).find((p) => p.uuid === req.params.uuid.toLowerCase());
+    if (!player?.name || !NAME_RE.test(player.name)) throw new HttpError(404, 'Spielername nicht gefunden');
+    const state = await stateOf(server.server_id);
+    if (!state.running || !state.players.includes(player.name)) throw new HttpError(409, 'Der Spieler muss auf einem laufenden Server online sein.');
+    const action = req.body?.action;
+    const commands = {
+      heal: 'effect give ' + player.name + ' minecraft:instant_health 1 10 true',
+      feed: 'effect give ' + player.name + ' minecraft:saturation 1 10 true',
+    };
+    if (action === 'xp') {
+      const levels = Number(req.body?.levels);
+      if (!Number.isInteger(levels) || levels < 0 || levels > 100000) throw new HttpError(400, 'Erfahrungslevel müssen zwischen 0 und 100.000 liegen.');
+      commands.xp = 'experience set ' + player.name + ' ' + levels + ' levels';
+    }
+    if (!commands[action]) throw new HttpError(400, 'Unbekannte Spieleraktion');
+    await crafty.stdin(server.server_id, commands[action]);
+    res.json({ ok: true });
+  }),
+);
 
 const NAME_RE = /^[A-Za-z0-9_.\-]{1,32}$/;
 
@@ -428,6 +471,62 @@ async function backupCtx(id) {
   return { ...c, root: c.server._backupDir };
 }
 
+const autoBackupStateFile = path.join(env.dataDir, 'auto-backups.json');
+let autoBackupState = readJsonSync(autoBackupStateFile);
+let autoBackupRunning = false;
+function readJsonSync(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
+}
+function saveAutoBackupState() {
+  const tmp = `${autoBackupStateFile}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(autoBackupState, null, 2));
+  fs.renameSync(tmp, autoBackupStateFile);
+}
+
+async function worldFingerprint(server) {
+  const props = await propsOf(server._dir);
+  const level = prop(props, 'level-name', 'world');
+  const worldDir = safeJoin(server._dir, level);
+  const files = await walk(worldDir, 32, 100000);
+  const hash = crypto.createHash('sha256');
+  for (const f of files) hash.update(`${f.rel}\0${f.size}\0${f.mtime}\n`);
+  return { level, signature: hash.digest('hex') };
+}
+
+async function runScheduledBackups() {
+  const cfg = settings.get().backup;
+  if (!cfg.enabled || autoBackupRunning || !/^([01]\d|2[0-3]):[0-5]\d$/.test(cfg.time || '')) return;
+  const now = new Date();
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const clock = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  if (clock < cfg.time || autoBackupState.lastRunDay === day) return;
+  autoBackupRunning = true;
+  try {
+    const servers = (await loadServers(true)).list;
+    const excluded = new Set(cfg.excludedServers || []);
+    for (const server of servers) {
+      if (excluded.has(String(server.server_id)) || !server._dir || !(await exists(server._dir))) continue;
+      try {
+        const { level, signature } = await worldFingerprint(server);
+        if (autoBackupState.servers?.[server.server_id] === signature) continue;
+        const running = (await loadServers()).api && (await stateOf(server.server_id).catch(() => unknownStats())).running;
+        await createWorldBackup({ server, dir: server._dir, level, backupDir: server._backupDir, cfg, command: running ? (c) => crafty.stdin(server.server_id, c) : null });
+        autoBackupState.servers ??= {};
+        autoBackupState.servers[server.server_id] = (await worldFingerprint(server)).signature;
+        saveAutoBackupState();
+        await runSync();
+        console.log(`Automatisches Backup erstellt: ${server.server_name || server.server_id}`);
+      } catch (e) {
+        console.error(`Automatisches Backup für ${server.server_name || server.server_id} fehlgeschlagen:`, e);
+      }
+    }
+    autoBackupState.lastRunDay = day;
+    saveAutoBackupState();
+  } finally {
+    autoBackupRunning = false;
+  }
+}
+
 app.get(
   '/api/servers/:id/backups',
   h(async (req, res) => {
@@ -458,6 +557,12 @@ app.post(
           command: running ? (c) => crafty.stdin(server.server_id, c) : null,
           onStep: (s) => (job.step = s),
         });
+        const target = req.body?.targetId && settings.get().targets.find((t) => t.id === req.body.targetId);
+        if (req.body?.targetId && !target) throw new HttpError(404, 'Backup-Ziel nicht gefunden');
+        if (target && !target.auto) {
+          job.step = `Wird auf „${target.name}“ übertragen …`;
+          await uploadTo(target, safeJoin(root, job.file), `${server.server_name || server.server_id}/${job.file}`);
+        }
         if (settings.get().targets.some((t) => t.auto)) {
           job.step = 'Wird auf Ziele kopiert …';
           await runSync();
@@ -587,6 +692,8 @@ app.use(express.static(pub));
 
 app.listen(env.port, () => {
   loadServers().catch(() => {}); // Cache vorwärmen
+  setInterval(() => runScheduledBackups().catch((e) => console.error('Backup-Zeitplan fehlgeschlagen:', e)), 30_000).unref();
+  runScheduledBackups().catch((e) => console.error('Backup-Zeitplan fehlgeschlagen:', e));
   const c = craftyCfg();
   console.log(`Craftynos läuft auf Port ${env.port} (Crafty-API: ${c.token ? c.url : 'kein Token – nur Volumes'})`);
 });

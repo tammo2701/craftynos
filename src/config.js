@@ -20,7 +20,7 @@ export const env = {
 fs.mkdirSync(dataDir, { recursive: true });
 const file = path.join(dataDir, 'settings.json');
 
-export const DEFAULT_BACKUP = { format: '{server} {date} {time}', includeFolder: true };
+export const DEFAULT_BACKUP = { format: '{server} {date} {time}', includeFolder: true, enabled: true, time: '03:00', excludedServers: [] };
 
 const defaults = {
   crafty: { url: '', token: '' },
@@ -33,7 +33,9 @@ let state = load();
 function load() {
   try {
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return { ...structuredClone(defaults), ...j, backup: { ...DEFAULT_BACKUP, ...(j.backup || {}) } };
+    const backup = { ...DEFAULT_BACKUP, ...(j.backup || {}) };
+    backup.excludedServers = Array.isArray(backup.excludedServers) ? backup.excludedServers.map(String) : [];
+    return { ...structuredClone(defaults), ...j, backup };
   } catch {
     return structuredClone(defaults);
   }

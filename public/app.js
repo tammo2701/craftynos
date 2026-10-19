@@ -137,7 +137,7 @@ const fmtTicks = (t) => {
   const s = Math.floor((t || 0) / 20);
   return `${Math.floor(s / 3600)} Stunden, ${Math.floor((s % 3600) / 60)} Minuten`;
 };
-const pretty = (id) => id.replace(/_/g, ' ');
+const pretty = (id) => id.replace(/^minecraft:/, '').replace(/_/g, ' ').replace(/\b[a-z]/g, (c) => c.toUpperCase());
 const headUrl = (uuid) => S.cfg.icons.head.replace('{uuid}', uuid);
 const range = (a, b) => [...Array(b - a)].map((_, i) => a + i);
 
@@ -213,8 +213,15 @@ function controls(id, st, hasApi, sm) {
   if (!hasApi)
     return [h('span', { class: 'muted', style: 'font-size:13px' }, 'Start/Stop benötigt die Crafty-API. ', h('a', { href: '#/settings/connection', onclick: (e) => e.stopPropagation() }, 'Einrichten'))];
   const mk = (label, icon, kind, action, msg) =>
-    btn(label, { icon, kind, sm, onclick: (e) => (e.stopPropagation(), doAction(id, action, msg)) });
-  if (st === 'offline' || st === 'crashed' || st === 'unknown') return [mk('Starten', 'play', 'success', 'start_server', 'Start angefordert')];
+    btn(label, { icon, kind, sm, onclick: (e) => {
+      e.stopPropagation();
+      if (action === 'update_executable' && !confirm('Crafty soll die Programmdatei dieses Servers aktualisieren. Fortfahren?')) return;
+      doAction(id, action, msg);
+    } });
+  if (st === 'offline' || st === 'crashed' || st === 'unknown') return [
+    mk('Starten', 'play', 'success', 'start_server', 'Start angefordert'),
+    mk('Programmdatei aktualisieren', 'download', 'ghost', 'update_executable', 'Crafty-Update gestartet'),
+  ];
   return [mk('Stoppen', 'stop', 'danger', 'stop_server', 'Stop angefordert'), mk('Neustart', 'restart', 'ghost', 'restart_server', 'Neustart angefordert')];
 }
 
@@ -364,16 +371,16 @@ async function tPlayers(id, info, el) {
   });
   const showPlayer = guard(async (p) => {
     detail.replaceChildren(h('p', { class: 'muted' }, 'Lade …'));
-    detail.replaceChildren(playerView(p, await api(`/servers/${id}/players/${p.uuid}`)));
+    detail.replaceChildren(playerView(p, await api('/servers/' + id + '/players/' + p.uuid), info.api, id));
   });
   await load();
 }
 
 const GM = ['Überleben', 'Kreativ', 'Abenteuer', 'Zuschauer'];
-const dimName = (d) => (d ? d.replace('minecraft:', '') : '');
+const dimName = (d) => (d ? pretty(d.replace('minecraft:', '')) : '');
 const posStr = (p) => (p ? `X ${p[0]}  Y ${p[1]}  Z ${p[2]}` : '–');
 
-function playerView(p, d) {
+function playerView(p, d, hasApi, serverId) {
   const out = h('div');
   out.append(
     h('div', { class: 'panel' },
@@ -400,7 +407,23 @@ function playerView(p, d) {
           h('div', { style: 'text-align:center;font-weight:700;margin-bottom:6px' }, `Level ${d.xpLevel}`),
           h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round((d.xpProgress || 0) * 100)}%` })),
           h('div', { class: 'vitals' }, hearts),
-          h('div', { class: 'vitals' }, foods))),
+          h('div', { class: 'vitals' }, foods),
+          p.online && hasApi && h('div', { class: 'btn-row player-actions' },
+            btn('Leben auffüllen', { icon: 'heart', kind: 'danger', sm: true, onclick: guard(async () => {
+              await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'heal' });
+              toast('Heilung an Crafty gesendet');
+            }) }),
+            btn('Hunger stillen', { icon: 'food', kind: 'ghost', sm: true, onclick: guard(async () => {
+              await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'feed' });
+              toast('Sättigung an Crafty gesendet');
+            }) }),
+            h('label', { class: 'xp-control' }, h('span', {}, 'Erfahrungslevel'), h('input', { type: 'number', min: 0, max: 100000, value: d.xpLevel || 0 })),
+            btn('Erfahrung setzen', { kind: 'ghost', sm: true, onclick: guard(async (e) => {
+              const input = e?.currentTarget?.parentElement?.querySelector('.xp-control input');
+              const levels = Number(input?.value ?? d.xpLevel ?? 0);
+              await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'xp', levels });
+              toast('Erfahrungslevel an Crafty gesendet');
+            }) })))),
       h('div', { class: 'panel' },
         h('div', { class: 'ph' }, 'Informationen'),
         h('div', { class: 'pb' },
@@ -667,8 +690,12 @@ async function followJob(jobId, box) {
 
 async function tBackups(id, info, el) {
   const targets = await api('/settings/targets');
+  const backupCfg = S.cfg.backup;
   const q = encodeURIComponent;
-  const sel = h('select', { style: 'height:30px;font-size:13px' }, targets.map((t) => h('option', { value: t.id }, t.name)));
+  const sel = h('select', { style: 'height:36px;min-width:180px' },
+    h('option', { value: '' }, 'Crafty-Backup-Ordner'),
+    targets.map((t) => h('option', { value: t.id, selected: t.auto && !targets.some((x) => x.auto && x.id !== t.id) }, t.name)));
+  const excluded = h('input', { type: 'checkbox', checked: (backupCfg.excludedServers || []).includes(id) });
   const rows = h('tbody');
   const prog = h('div');
   const load = guard(async () => {
@@ -681,11 +708,6 @@ async function tBackups(id, info, el) {
           h('td', {}, fmtDate(f.mtime)),
           h('td', { class: 'r' },
             abtn(`/api/servers/${id}/backups/download?path=${q(f.rel)}`, '', { icon: 'download', sm: true, title: 'Herunterladen' }),
-            targets.length > 0 && btn('', { icon: 'cloud', kind: 'ghost', sm: true, title: 'Auf ausgewähltes Ziel kopieren', onclick: guard(async () => {
-              toast('Kopieren gestartet …');
-              await send('POST', `/servers/${id}/backups/upload`, { path: f.rel, targetId: sel.value });
-              toast('Auf Ziel kopiert');
-            }) }),
             btn('', { icon: 'trash', kind: 'ghost danger', sm: true, title: 'Löschen', onclick: guard(async () => {
               if (!confirm('Backup wirklich löschen?')) return;
               await api(`/servers/${id}/backups?path=${q(f.rel)}`, { method: 'DELETE' });
@@ -699,7 +721,7 @@ async function tBackups(id, info, el) {
   create.addEventListener('click', guard(async () => {
     create.disabled = true;
     try {
-      const { jobId } = await send('POST', `/servers/${id}/backups/create`);
+      const { jobId } = await send('POST', `/servers/${id}/backups/create`, { targetId: sel.value || undefined });
       await followJob(jobId, prog);
     } finally {
       create.disabled = false;
@@ -707,12 +729,21 @@ async function tBackups(id, info, el) {
       load();
     }
   }));
+  const saveExclusion = guard(async () => {
+    const excludedServers = new Set(backupCfg.excludedServers || []);
+    if (excluded.checked) excludedServers.add(id);
+    else excludedServers.delete(id);
+    S.cfg.backup = await send('PUT', '/settings/backup', { ...backupCfg, excludedServers: [...excludedServers] });
+    toast(excluded.checked ? 'Von automatischen Backups ausgenommen' : 'Automatische Backups aktiviert');
+  });
+  excluded.addEventListener('change', saveExclusion);
   el.append(
     h('div', { class: 'panel' },
       h('div', { class: 'ph' }, 'Backups', h('span', { class: 'panel-sub' }, `Ordner „${info.level}“ als ZIP`), h('span', { class: 'sp' }),
-        targets.length ? [h('span', { class: 'panel-sub' }, 'Ziel:'), sel] : abtn('#/settings/backups', 'Ziel einrichten', { sm: true }),
+        h('label', { class: 'backup-target-label' }, h('span', {}, 'Ziel'), sel),
         create),
       h('div', { class: 'pb' },
+        h('label', { class: 'checkrow' }, excluded, 'Diesen Server von automatischen globalen Backups ausnehmen'),
         !info.api && h('div', { class: 'notice' }, 'Ohne Crafty-API wird die Welt vor dem Backup nicht gespeichert. Am besten Backups bei gestopptem Server erstellen.'),
         prog,
         h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Datei'), h('th', { class: 'r' }, 'Größe'), h('th', {}, 'Erstellt'), h('th', {}))), rows))),
@@ -866,17 +897,25 @@ async function sBackups(el) {
   const cfg = S.cfg.backup;
   const targets = await api('/settings/targets');
   const sync = await api('/settings/sync');
+  const servers = await api('/servers');
 
   const fmtIn = h('input', { value: cfg.format, class: 'mono' });
   const prev = h('div', { class: 'preview' }, previewName(cfg.format));
   fmtIn.addEventListener('input', () => (prev.textContent = previewName(fmtIn.value)));
   const folderCb = h('input', { type: 'checkbox', checked: cfg.includeFolder !== false });
+  const scheduleEnabled = h('input', { type: 'checkbox', checked: cfg.enabled !== false });
+  const scheduleTime = h('input', { type: 'time', value: cfg.time || '03:00' });
+  const excludedServers = new Set(cfg.excludedServers || []);
   const chips = ['{server}', '{world}', '{date}', '{time}', '{YYYY}', '{MM}', '{DD}', '{HH}', '{mm}', '{ss}'].map((c) =>
     h('button', { onclick: () => (fmtIn.setRangeText(c, fmtIn.selectionStart ?? fmtIn.value.length, fmtIn.selectionEnd ?? fmtIn.value.length, 'end'), fmtIn.dispatchEvent(new Event('input')), fmtIn.focus()) }, c));
 
   const saveFmt = guard(async () => {
-    S.cfg.backup = await send('PUT', '/settings/backup', { format: fmtIn.value, includeFolder: folderCb.checked });
+    S.cfg.backup = await send('PUT', '/settings/backup', { ...cfg, format: fmtIn.value, includeFolder: folderCb.checked });
     toast('Gespeichert');
+  });
+  const saveSchedule = guard(async () => {
+    S.cfg.backup = await send('PUT', '/settings/backup', { ...cfg, enabled: scheduleEnabled.checked, time: scheduleTime.value, excludedServers: [...excludedServers] });
+    toast('Zeitplan gespeichert');
   });
   const reset = () => ((fmtIn.value = '{server} {date} {time}'), fmtIn.dispatchEvent(new Event('input')));
 
@@ -897,6 +936,15 @@ async function sBackups(el) {
 
   el.append(
     h('div', { class: 'panel' },
+      section('Automatische globale Backups', 'Einmal täglich werden geänderte Welten zu dieser Uhrzeit gesichert. Laufende Server werden vor dem Backup über Crafty gespeichert.',
+        h('label', { class: 'checkrow' }, scheduleEnabled, 'Automatische Backups aktivieren'),
+        field('Tägliche Uhrzeit', scheduleTime, 'Es gilt die lokale Zeitzone des Containers (TZ in Docker).'),
+        h('div', { class: 'exclude-list' }, servers.map((s) => {
+          const checkbox = h('input', { type: 'checkbox', checked: excludedServers.has(s.id) });
+          checkbox.addEventListener('change', () => checkbox.checked ? excludedServers.add(s.id) : excludedServers.delete(s.id));
+          return h('label', { class: 'checkrow' }, checkbox, s.name || 'Unbenannter Server');
+        })),
+        h('div', { class: 'btn-row' }, btn('Zeitplan speichern', { icon: 'save', kind: 'success', onclick: saveSchedule }))),
       section('Backup-Format', 'Gesichert wird immer der World-Ordner (level-name) als ZIP-Datei.',
         field('Dateiname', fmtIn, 'Platzhalter per Klick einfügen. Doppelpunkte und andere unzulässige Zeichen werden automatisch entfernt.'),
         h('div', { class: 'chips-row' }, chips),

@@ -99,7 +99,9 @@ export async function runSync() {
     const targets = settings.get().targets.filter((t) => t.auto);
     if (!targets.length) return;
     const state = loadState();
+    const excluded = new Set(settings.get().backup.excludedServers || []);
     for (const s of await provider()) {
+      if (excluded.has(String(s.server_id))) continue;
       const root = s._backupDir;
       if (!root) continue;
       for (const f of (await walk(root)).filter((x) => x.rel.toLowerCase().endsWith('.zip'))) {

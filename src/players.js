@@ -12,7 +12,7 @@ async function listUuids(dirs, ext) {
   for (const d of dirs) {
     try {
       for (const f of await fsp.readdir(d)) {
-        if (f.endsWith(ext)) out.push(f.slice(0, -ext.length).toLowerCase());
+        if (f.toLowerCase().endsWith(ext)) out.push(canonicalUuid(f.slice(0, -ext.length)));
       }
     } catch {
       /* Ordner existiert nicht */
@@ -22,22 +22,31 @@ async function listUuids(dirs, ext) {
 }
 
 async function findFile(dirs, uuid, ext) {
+  const variants = [...new Set([uuid, uuid.replace(/-/g, '')])];
   for (const d of dirs) {
-    const p = path.join(d, uuid + ext);
-    if (await exists(p)) return p;
+    for (const variant of variants) {
+      const p = path.join(d, variant + ext);
+      if (await exists(p)) return p;
+    }
   }
   return null;
+}
+
+function canonicalUuid(value) {
+  const id = String(value).toLowerCase();
+  if (/^[0-9a-f]{32}$/.test(id)) return id.slice(0, 8) + '-' + id.slice(8, 12) + '-' + id.slice(12, 16) + '-' + id.slice(16, 20) + '-' + id.slice(20);
+  return id;
 }
 
 export async function knownPlayers(dir, level, onlineNames = []) {
   const w = path.join(dir, level);
   const map = new Map();
   const get = (uuid, name) => {
-    const id = String(uuid).toLowerCase();
+    const id = canonicalUuid(uuid);
     if (!map.has(id))
       map.set(id, { uuid: id, name: null, whitelisted: false, op: false, banned: false, hasData: false, online: false });
     const p = map.get(id);
-    if (name && !p.name) p.name = name;
+    if (typeof name === 'string' && name.trim() && !p.name) p.name = name.trim();
     return p;
   };
   for (const u of await readJson(path.join(dir, 'usercache.json'), [])) get(u.uuid, u.name);
