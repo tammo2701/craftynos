@@ -1,11 +1,27 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import nbt from 'prismarine-nbt';
 import { exists, readJson } from './files.js';
 
 const dataDirs = (w) => [path.join(w, 'playerdata'), path.join(w, 'players', 'data')];
 const statsDirs = (w) => [path.join(w, 'stats'), path.join(w, 'players', 'stats')];
+const profileNames = new Map();
+
+async function profileName(uuid) {
+  const id = canonicalUuid(uuid);
+  const cached = profileNames.get(id);
+  if (cached && cached.expires > Date.now()) return cached.name;
+  try {
+    const response = await fetch(`https://sessionserver.mojang.com/session/minecraft/profile/${id.replace(/-/g, '')}`, { signal: AbortSignal.timeout(4000) });
+    const name = response.ok ? (await response.json()).name : null;
+    profileNames.set(id, { name: typeof name === 'string' ? name : null, expires: Date.now() + (name ? 86400000 : 300000) });
+    return typeof name === 'string' ? name : null;
+  } catch {
+    return null;
+  }
+}
 
 async function listUuids(dirs, ext) {
   const out = [];
@@ -55,6 +71,7 @@ export async function knownPlayers(dir, level, onlineNames = []) {
   for (const u of await readJson(path.join(dir, 'banned-players.json'), [])) get(u.uuid, u.name).banned = true;
   for (const id of await listUuids(dataDirs(w), '.dat')) get(id).hasData = true;
   for (const id of await listUuids(statsDirs(w), '.json')) get(id);
+  await Promise.all([...map.values()].filter((p) => !p.name).map(async (p) => { p.name = await profileName(p.uuid); }));
   const online = new Set(onlineNames.map((n) => n.toLowerCase()));
   const list = [...map.values()];
   for (const p of list) p.online = p.name ? online.has(p.name.toLowerCase()) : false;
@@ -167,6 +184,48 @@ export async function playerDetail(dir, level, uuid) {
     out.enderChest = itemList(p.EnderItems);
   }
   return out;
+}
+
+/** Aktualisiert gespeicherte Spielerdaten, wenn Crafty bestätigt, dass der Server gestoppt ist. */
+export async function updateOfflinePlayer(dir, level, uuid, action, levels) {
+  const id = String(uuid).toLowerCase();
+  if (!/^[0-9a-f-]{32,36}$/.test(id)) throw new Error('Ungültige Spieler-UUID');
+  const file = await findFile(dataDirs(path.join(dir, level)), id, '.dat');
+  if (!file) throw new Error('Für diesen Spieler liegen keine gespeicherten Daten vor.');
+
+  const original = await fsp.readFile(file);
+  const { parsed, type } = await nbt.parse(original);
+  const root = parsed.value?.Data?.value || parsed.value;
+  const set = (key, value) => {
+    const tag = root[key];
+    if (!tag || !['byte', 'short', 'int', 'long', 'float', 'double'].includes(tag.type))
+      throw new Error(`Das Spielerfeld „${key}“ fehlt in der NBT-Datei.`);
+    tag.value = value;
+  };
+
+  if (action === 'heal') set('Health', 20);
+  else if (action === 'feed') {
+    set('foodLevel', 20);
+    if (root.foodSaturationLevel) set('foodSaturationLevel', 20);
+    if (root.foodExhaustionLevel) set('foodExhaustionLevel', 0);
+  } else if (action === 'xp') {
+    if (!Number.isInteger(levels) || levels < 0 || levels > 100000) throw new Error('Erfahrungslevel müssen zwischen 0 und 100.000 liegen.');
+    set('XpLevel', levels);
+    set('XpP', 0);
+    const total = levels <= 16 ? levels * levels + 6 * levels : levels <= 31 ? 2.5 * levels ** 2 - 40.5 * levels + 360 : 4.5 * levels ** 2 - 162.5 * levels + 2220;
+    if (root.XpTotal) set('XpTotal', Math.floor(total));
+  } else throw new Error('Unbekannte Spieleraktion');
+
+  const data = nbt.writeUncompressed(parsed, type);
+  const output = original[0] === 0x1f && original[1] === 0x8b ? gzipSync(data) : data;
+  const stat = await fsp.stat(file);
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`;
+  try {
+    await fsp.writeFile(tmp, output, { mode: stat.mode });
+    await fsp.rename(tmp, file);
+  } finally {
+    await fsp.rm(tmp, { force: true }).catch(() => {});
+  }
 }
 
 export function offlineUuid(name) {

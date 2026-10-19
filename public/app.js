@@ -20,7 +20,9 @@ function h(tag, props, ...kids) {
   }
   for (const k of kids.flat(Infinity)) {
     if (k == null || k === false) continue;
-    e.append(k.nodeType ? k : document.createTextNode(String(k)));
+    if (k.nodeType) e.append(k);
+    else if (Array.isArray(k)) e.append(...k);
+    else e.append(document.createTextNode(String(k)));
   }
   return e;
 }
@@ -46,7 +48,13 @@ const ICONS = {
   heart: 'M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.4-7 10-7 10z',
   food: 'M15 4a5 5 0 0 1 3.5 8.5L14 17l-7-7 4.5-4.5A5 5 0 0 1 15 4zM7 10l-3 3 2 2 3-3',
   chest: 'M3 7l9-4 9 4v12l-9 3-9-3zM3 7l9 4 9-4M12 11v11M7 9v4m10-4v4',
+  ender: 'M4 8l8-4 8 4v10l-8 3-8-3zM4 8l8 4 8-4M12 12v9M9 6l6 3M9 15l6 3',
   backpack: 'M6 8V6a6 6 0 0 1 12 0v2M5 8h14v13H5zM8 8v5h8V8M9 17h6',
+  server: 'M4 4h16v6H4zM4 14h16v6H4zM7 7h.01M7 17h.01M11 7h6M11 17h6',
+  players: 'M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M16 4.5a3.5 3.5 0 0 1 0 6.8M17 15h1a3 3 0 0 1 3 3v2',
+  shield: 'M12 3l8 3v5c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6zM9 12l2 2 4-4',
+  sliders: 'M4 6h9m4 0h3M4 12h3m4 0h9M4 18h9m4 0h3M13 4v4m-2 2v4m6 2v4',
+  terminal: 'M4 5h16v14H4zM7 9l3 3-3 3m6 0h4',
 };
 const FILLED = new Set(['play', 'stop', 'heart', 'food']);
 
@@ -286,7 +294,7 @@ async function viewList() {
                 h('div', {}, h('small', {}, 'Spieler'), h('b', {}, s.api ? `${s.online}/${s.max || '–'}` : `max. ${s.max || '–'}`)),
                 h('div', {}, h('small', {}, 'Version'), h('b', {}, s.version || '–')),
                 h('div', {}, h('small', {}, 'Port'), h('b', {}, s.port || '–'))),
-              h('div', { class: 'scard-actions' }, controls(s.id, s.status, s.api, true))))),
+              h('div', { class: 'scard-actions' }, ...controls(s.id, s.status, s.api, true))))),
       );
     } catch (e) {
       wrap.replaceChildren(h('div', { class: 'empty' }, h('p', {}, e.message)));
@@ -299,12 +307,12 @@ async function viewList() {
 /* ---------- Server-Seite ---------- */
 
 const TABS = [
-  ['overview', 'Übersicht'],
-  ['players', 'Spieler & Inventar'],
-  ['whitelist', 'Whitelist'],
-  ['properties', 'Properties'],
-  ['files', 'Dateien'],
-  ['backups', 'Backups'],
+  ['overview', 'Übersicht', 'server'],
+  ['players', 'Spieler', 'players'],
+  ['whitelist', 'Whitelist', 'shield'],
+  ['properties', 'Properties', 'sliders'],
+  ['files', 'Dateien', 'folder'],
+  ['backups', 'Backups', 'cloud'],
 ];
 
 async function viewServer(id, tab) {
@@ -315,11 +323,12 @@ async function viewServer(id, tab) {
     head.replaceChildren(h('h1', {}, info.name), statusEl(info.status), h('span', { class: 'sp' }), ...controls(id, info.status, info.api, false));
   paintHead();
   const body = h('div');
+  const serverNav = h('nav', { class: 'server-nav', 'aria-label': 'Servernavigation' },
+    TABS.map(([key, label, iconName]) => h('a', { href: `#/s/${id}/${key}`, class: key === tab ? 'active' : '' }, ico(iconName, 17), h('span', {}, label))));
   $app.replaceChildren(
     h('a', { class: 'back', href: '#/' }, ico('back', 16), 'Alle Server'),
     head,
-    h('div', { class: 'tabs' }, TABS.map(([k, label]) => h('a', { href: `#/s/${id}/${k}`, class: k === tab ? 'active' : '' }, label))),
-    body,
+    h('div', { class: 'server-shell' }, serverNav, body),
   );
   every(async () => {
     try {
@@ -419,9 +428,9 @@ function playerView(p, d, hasApi, serverId, refresh) {
   const out = h('div');
   out.append(
     h('div', { class: 'panel' },
-      h('div', { class: 'phead' },
+    h('div', { class: 'phead' },
         h('img', { src: headUrl(p.uuid), alt: '' }),
-        h('div', {}, h('h2', { style: 'font-size:22px' }, p.name || 'Unbekannter Spieler'), h('div', { class: 'muted mono', style: 'font-size:12px' }, p.uuid)),
+        h('div', {}, h('h2', { style: 'font-size:22px' }, p.name || 'Unbekannter Spieler'), h('div', { class: 'muted mono', style: 'font-size:12px' }, p.name ? '' : 'Name nicht verfügbar')),
         h('span', { class: 'sp' }),
         p.online && h('span', { class: 'chip green' }, 'Online'))),
   );
@@ -442,26 +451,27 @@ function playerView(p, d, hasApi, serverId, refresh) {
         h('div', { class: 'pb' },
           h('div', { style: 'text-align:center;font-weight:700;margin-bottom:6px' }, `Level ${d.xpLevel}`),
           h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round(Math.max(0, Math.min(1, Number(d.xpProgress) || 0)) * 100)}%` })),
-          h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Leben'), hearts, h('b', { class: 'vital-value' }, `${hp}/20`)),
-          h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Hunger'), foods, h('b', { class: 'vital-value' }, `${food}/20`)),
-          p.online && hasApi && h('div', { class: 'btn-row player-actions' },
-            btn('Leben auffüllen', { icon: 'heart', kind: 'danger', sm: true, onclick: guard(async () => {
-              await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'heal' });
-              toast('Heilung an Crafty gesendet');
-              setTimeout(refresh, 1000);
-            }) }),
-            btn('Hunger stillen', { icon: 'food', kind: 'ghost', sm: true, onclick: guard(async () => {
-              await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'feed' });
-              toast('Sättigung an Crafty gesendet');
-              setTimeout(refresh, 1000);
-            }) }),
+          h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Leben'), hearts, h('b', { class: 'vital-value' }, `${hp}/20`), h('span', { class: 'sp' }),
+            btn('Heilen', { icon: 'heart', kind: 'success', sm: true, title: 'Leben auffüllen', cls: 'vital-action', onclick: guard(async () => {
+              const result = await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'heal' });
+              toast(result.mode === 'offline' ? 'Leben auf 20 gesetzt' : 'Heilung an Crafty gesendet');
+              setTimeout(refresh, 350);
+            }) })),
+          h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Hunger'), foods, h('b', { class: 'vital-value' }, `${food}/20`), h('span', { class: 'sp' }),
+            btn('Füttern', { icon: 'food', kind: 'success', sm: true, title: 'Hunger stillen', cls: 'vital-action', onclick: guard(async () => {
+              const result = await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'feed' });
+              toast(result.mode === 'offline' ? 'Hunger aufgefüllt' : 'Sättigung an Crafty gesendet');
+              setTimeout(refresh, 350);
+            }) })),
+          h('div', { class: 'btn-row player-actions' },
+            !hasApi && h('span', { class: 'muted player-action-note' }, 'Ohne Crafty-API muss der Server für Änderungen an Spielerdaten gestoppt sein.'),
             h('label', { class: 'xp-control' }, h('span', {}, 'Erfahrungslevel'), h('input', { type: 'number', min: 0, max: 100000, value: d.xpLevel || 0 })),
             btn('Erfahrung setzen', { kind: 'ghost', sm: true, onclick: guard(async (e) => {
               const input = e?.currentTarget?.parentElement?.querySelector('.xp-control input');
               const levels = Number(input?.value ?? d.xpLevel ?? 0);
-              await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'xp', levels });
-              toast('Erfahrungslevel an Crafty gesendet');
-              setTimeout(refresh, 1000);
+              const result = await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'xp', levels });
+              toast(result.mode === 'offline' ? 'Erfahrungslevel gespeichert' : 'Erfahrungslevel an Crafty gesendet');
+              setTimeout(refresh, 350);
             }) })))),
       h('div', { class: 'panel' },
         h('div', { class: 'ph' }, 'Informationen'),
@@ -514,7 +524,7 @@ function inventoryPanel(d) {
   };
   showInv();
   return h('div', { class: 'panel' },
-    h('div', { class: 'ph' }, 'Inventar', h('span', { class: 'sp' }), btn('Inventar', { icon: 'backpack', sm: true, onclick: showInv }), btn(`Endertruhe (${ender.size})`, { icon: 'chest', sm: true, kind: 'ghost', onclick: showEnder })),
+    h('div', { class: 'ph' }, 'Inventar', h('span', { class: 'sp' }), btn('Inventar', { icon: 'backpack', sm: true, onclick: showInv }), btn(`Endertruhe (${ender.size})`, { icon: 'ender', sm: true, kind: 'ghost', onclick: showEnder })),
     h('div', { class: 'pb' }, h('div', { class: 'invwrap' }, armor, grid), overflow));
 }
 

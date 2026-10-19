@@ -9,7 +9,7 @@ import { env, settings, craftyCfg, normalizeUrl, DEFAULT_BACKUP } from './config
 import { crafty, normalizeStats, unknownStats, testConnection, diagnose, autodetect, getDetected, resetDetected } from './crafty.js';
 import { HttpError, mapPath, safeJoin, listDir, walk, readJson, exists } from './files.js';
 import { parseProps, applyProps } from './props.js';
-import { knownPlayers, playerDetail, resolveUuid } from './players.js';
+import { knownPlayers, playerDetail, resolveUuid, updateOfflinePlayer } from './players.js';
 import { discoverServers, volumeInfo } from './discovery.js';
 import { uploadTo, testTarget, publicTarget, runSync, syncLog, setServerProvider } from './backups.js';
 import { createWorldBackup } from './zipbackup.js';
@@ -310,24 +310,40 @@ app.post(
   '/api/servers/:id/players/:uuid/action',
   h(async (req, res) => {
     const { server, dir } = await ctx(req.params.id);
-    await requireApi();
-    const player = (await knownPlayers(dir, prop(await propsOf(dir), 'level-name', 'world'))).find((p) => p.uuid === req.params.uuid.toLowerCase());
-    if (!player?.name || !NAME_RE.test(player.name)) throw new HttpError(404, 'Spielername nicht gefunden');
-    const state = await stateOf(server.server_id);
-    if (!state.running || !state.players.includes(player.name)) throw new HttpError(409, 'Der Spieler muss auf einem laufenden Server online sein.');
+    const hasApi = (await loadServers()).api;
+    const level = prop(await propsOf(dir), 'level-name', 'world');
     const action = req.body?.action;
-    const commands = {
-      heal: 'effect give ' + player.name + ' minecraft:instant_health 1 10 true',
-      feed: 'effect give ' + player.name + ' minecraft:saturation 1 10 true',
-    };
-    if (action === 'xp') {
-      const levels = Number(req.body?.levels);
-      if (!Number.isInteger(levels) || levels < 0 || levels > 100000) throw new HttpError(400, 'Erfahrungslevel müssen zwischen 0 und 100.000 liegen.');
-      commands.xp = 'experience set ' + player.name + ' ' + levels + ' levels';
+    const levels = Number(req.body?.levels);
+    if (action === 'xp' && (!Number.isInteger(levels) || levels < 0 || levels > 100000))
+      throw new HttpError(400, 'Erfahrungslevel müssen zwischen 0 und 100.000 liegen.');
+    if (!['heal', 'feed', 'xp'].includes(action)) throw new HttpError(400, 'Unbekannte Spieleraktion');
+
+    if (!hasApi) {
+      try {
+        await updateOfflinePlayer(dir, level, req.params.uuid, action, levels);
+        return res.json({ ok: true, mode: 'offline' });
+      } catch (e) {
+        throw new HttpError(409, e.message);
+      }
     }
-    if (!commands[action]) throw new HttpError(400, 'Unbekannte Spieleraktion');
-    await crafty.stdin(server.server_id, commands[action]);
-    res.json({ ok: true });
+    const state = await stateOf(server.server_id);
+    if (state.running) {
+      const player = (await knownPlayers(dir, level, state.players)).find((p) => p.uuid === req.params.uuid.toLowerCase());
+      if (!player?.name || !NAME_RE.test(player.name)) throw new HttpError(404, 'Spielername nicht gefunden');
+      const commands = {
+        heal: `effect give ${player.name} minecraft:instant_health 1 10 true`,
+        feed: `effect give ${player.name} minecraft:saturation 1 10 true`,
+        xp: `experience set ${player.name} ${levels} levels`,
+      };
+      await crafty.stdin(server.server_id, commands[action]);
+      return res.json({ ok: true, mode: 'online' });
+    }
+    try {
+      await updateOfflinePlayer(dir, level, req.params.uuid, action, levels);
+      res.json({ ok: true, mode: 'offline' });
+    } catch (e) {
+      throw new HttpError(409, e.message);
+    }
   }),
 );
 
