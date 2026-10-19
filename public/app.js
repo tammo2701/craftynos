@@ -403,7 +403,8 @@ async function tOverview(id, info, el, hooks) {
   }) });
   const addressCard = h('section', { class: 'server-address-card' },
     h('div', { class: 'server-address-copy' }, h('span', { class: 'eyebrow' }, 'SERVERADRESSE'), address), copyAddress);
-  const icon = h('div', { class: 'server-hero-icon', 'aria-hidden': 'true' }, ico('server', 42));
+  const icon = h('div', { class: 'server-hero-icon', 'aria-label': 'Minecraft-Server' },
+    h('span', { class: 'minecraft-dirt-block', role: 'img', 'aria-label': 'Minecraft-Erde' }));
   const serverStatus = h('div', { class: 'server-status-copy' });
   const stats = h('div', { class: 'server-hero-stats' });
   const actionArea = h('div', { class: 'server-hero-action' });
@@ -451,7 +452,7 @@ async function tOverview(id, info, el, hooks) {
     ].map(([label, value, iconName]) => h('div', { class: 'server-hero-stat' }, ico(iconName, 18), h('span', {}, h('small', {}, label), h('b', {}, value)))));
     const actions = server.api
       ? state === 'online'
-        ? [btn('Server stoppen', { icon: 'stop', kind: 'danger', cls: 'server-primary-action', onclick: () => runAction('stop_server') }), btn('Neustart', { icon: 'restart', kind: 'ghost', onclick: () => runAction('restart_server') })]
+        ? [btn('Server stoppen', { icon: 'stop', kind: 'danger', cls: 'server-primary-action server-stop-action', onclick: () => runAction('stop_server') }), btn('Neustart', { icon: 'restart', kind: 'ghost', onclick: () => runAction('restart_server') })]
         : [btn(state === 'starting' ? 'Wird gestartet …' : state === 'stopping' ? 'Wird gestoppt …' : 'Starten', { icon: 'play', kind: 'success', cls: 'server-primary-action', disabled: ['starting', 'stopping'].includes(state), onclick: () => runAction('start_server') })]
       : [abtn('#/settings/connection', 'Crafty verbinden', { icon: 'up', kind: 'primary' })];
     actionArea.replaceChildren(...actions);

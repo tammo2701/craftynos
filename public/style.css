@@ -864,3 +864,147 @@ body { background: #f4f6f8; }
   .player-vitals .vitals .k-success { grid-column: auto; justify-self: stretch; }
   .invwrap { --slot-size: clamp(27px,7.3vw,43px); }
 }
+
+/* Aternos-like visual pass: deeper surfaces, Minecraft details and clear actions. */
+:root {
+  --canvas: #ebf0f5;
+  --paper: #fff;
+  --line: #e1e7ed;
+  --line-soft: #e8edf2;
+  --text: #28343d;
+  font-family: Rubik, Inter, Arial, sans-serif;
+}
+body, #app { background: #ebf0f5; font-family: Rubik, Inter, Arial, sans-serif; }
+.top { background: #181d20; }
+.top-in { color: #fff; }
+.brand { font-weight: 700; }
+.brand svg rect { fill: #1e88e5; }
+.top-notifications:hover, .top-profile:hover { background: #252d31; }
+.server-shell { background: #ebf0f5; }
+.server-nav { background: #fff; box-shadow: 2px 0 10px rgba(24,37,48,.045); }
+.server-nav a { font-weight: 500; }
+.server-nav a.active { color: #176eae; background: rgba(30,136,229,.1); border-left: 4px solid #1e88e5; font-weight: 700; }
+.server-nav a.active .ico { color: #1e88e5; }
+.server-nav-server { background: #fff; }
+.server-toolbar { border-bottom-color: #dfe6ec; }
+.server-toolbar h1, .page-head h1 { font-weight: 700; }
+.ph { font-weight: 700; }
+.panel, .empty, .server-address-card, .server-status-widget, .scard, .tile {
+  background: #fff;
+  border: 1px solid #e1e7ed;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
+}
+.panel { overflow: hidden; }
+.player-vitals, .player-control { color: #28343d; background: #fff; border-color: #e1e7ed; }
+.player-vitals .ph, .player-control .ph { color: #263238; border-color: #e8edf2; }
+.player-vitals h3, .player-vitals .panel-sub, .player-vitals .vital-label,
+.player-vitals .vital-value, .player-vitals .player-action-note { color: #65727b; }
+.player-vitals .xp-level { color: #263238; }
+.server-address-card, .server-status-widget { transition: box-shadow .18s ease, transform .18s ease; }
+.server-address-card:hover, .server-status-widget:hover, .rail-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,.1);
+}
+.server-hero-icon {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+}
+.minecraft-dirt-block {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  display: block;
+  overflow: hidden;
+  background: linear-gradient(to bottom, #619d3e 0 27%, #88603f 27% 100%);
+  border: 3px solid #35422f;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.23), 0 2px 5px rgba(20,35,20,.2);
+  image-rendering: pixelated;
+}
+.minecraft-dirt-block::before {
+  position: absolute;
+  inset: 18px 0 0;
+  content: '';
+  background-image: repeating-linear-gradient(0deg, transparent 0 8px, rgba(62,39,25,.18) 8px 12px), repeating-linear-gradient(90deg, transparent 0 9px, rgba(255,228,185,.13) 9px 13px);
+}
+.minecraft-dirt-block::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 7px;
+  content: '';
+  background: repeating-linear-gradient(90deg, #79ad4b 0 8px, #568b38 8px 15px);
+}
+.server-status-widget { grid-template-columns: 72px minmax(0,1fr) 220px; gap: 19px; padding: 24px 27px; }
+.server-state-badge { padding: 6px 10px; border-radius: 999px; text-transform: none; }
+.server-state-badge.state-offline { color: #fff; background: #f44336; }
+.server-state-badge.state-online { color: #fff; background: #4caf50; }
+.server-state-badge.state-starting, .server-state-badge.state-stopping, .server-state-badge.state-updating { color: #382600; background: #ffb52e; }
+.server-state-badge.state-unknown { color: #fff; background: #687780; }
+.server-state-badge i { box-shadow: 0 0 0 3px currentColor, 0 0 10px 2px currentColor; }
+.server-status-copy h2 { font-weight: 700; }
+.server-primary-action {
+  min-height: 58px;
+  padding: 14px 24px;
+  color: #fff;
+  background: #5cb85c;
+  border: 1px solid #4cae4c;
+  border-radius: 8px;
+  box-shadow: 0 3px 0 #449d44, 0 4px 12px rgba(66,151,66,.2);
+  font-size: 18px;
+  font-weight: 700;
+}
+.server-primary-action:hover:not(:disabled) { color: #fff; background: #4cae4c; border-color: #398439; transform: translateY(-1px); }
+.server-primary-action.server-stop-action { background: #f44336; border-color: #e53935; box-shadow: 0 3px 0 #c62828, 0 4px 12px rgba(244,67,54,.2); }
+.server-primary-action.server-stop-action:hover:not(:disabled) { background: #e53935; border-color: #c62828; }
+.server-primary-action .ico { width: 24px; height: 24px; }
+.server-hero-action .k-primary { min-height: 52px; border-radius: 8px; font-size: 15px; }
+.server-primary-action:disabled { color: #fff; background: #94c894; border-color: #83b883; box-shadow: none; }
+.server-details-panel .ph, .rail-panel .ph { font-weight: 700; }
+.rail-panel { border-radius: 10px; transition: box-shadow .18s ease, transform .18s ease; }
+.dashboard-tip { border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04); }
+.btn, input, select, textarea { border-radius: 6px; }
+.scard {
+  position: relative;
+  padding: 12px 16px 4px;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.scard::before { display: none; }
+.scard:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.1); }
+.scard > * { margin-right: 0; margin-left: 0; }
+.scard-top { min-height: 53px; justify-content: flex-start; gap: 12px; }
+.scard-top::before {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  content: '';
+  background: linear-gradient(to bottom,#619d3e 0 27%,#88603f 27% 100%);
+  border: 2px solid #52634b;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+}
+.scard-name { flex: 1; min-width: 0; color: #263238; font-size: 17px; font-weight: 700; }
+.scard .status { padding: 5px 8px; color: #34434e; background: #f4f7f9; border-radius: 999px; font-size: 11px; }
+.scard .s-online .dot, .scard .status.s-online .dot { background: #4caf50; box-shadow: 0 0 0 3px rgba(76,175,80,.15); }
+.scard .status.s-offline .dot { background: #f44336; box-shadow: 0 0 0 3px rgba(244,67,54,.14); }
+.scard .status.s-starting .dot, .scard .status.s-updating .dot { background: #ff9800; box-shadow: 0 0 0 3px rgba(255,152,0,.16); }
+.scard-meta { margin-top: 8px; margin-bottom: 12px; }
+.scard-actions { min-height: 48px; border-top-color: #edf0f2; }
+.tile { box-shadow: 0 4px 12px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04); }
+@media (max-width: 1100px) {
+  .server-status-widget { grid-template-columns: 72px minmax(0,1fr) 185px; }
+}
+@media (max-width: 700px) {
+  .server-status-widget { grid-template-columns: 54px minmax(0,1fr); padding: 16px; }
+  .server-hero-icon, .minecraft-dirt-block { width: 48px; height: 48px; }
+  .minecraft-dirt-block::before { inset: 14px 0 0; }
+  .server-primary-action { padding: 14px 18px; }
+  .scard { padding: 10px 12px 3px; }
+  .server-nav a.active { border-left: 0; border-bottom: 4px solid #1e88e5; }
+}
