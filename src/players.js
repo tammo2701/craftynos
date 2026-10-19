@@ -62,7 +62,8 @@ export async function knownPlayers(dir, level, onlineNames = []) {
     if (!map.has(id))
       map.set(id, { uuid: id, name: null, whitelisted: false, op: false, banned: false, hasData: false, online: false });
     const p = map.get(id);
-    if (typeof name === 'string' && name.trim() && !p.name) p.name = name.trim();
+    const candidate = typeof name === 'string' ? name.trim() : '';
+    if (candidate && !p.name && candidate.toLowerCase() !== id && candidate.toLowerCase() !== id.slice(0, 8) && /^[A-Za-z0-9_.-]{1,32}$/.test(candidate)) p.name = candidate;
     return p;
   };
   for (const u of await readJson(path.join(dir, 'usercache.json'), [])) get(u.uuid, u.name);
@@ -187,7 +188,7 @@ export async function playerDetail(dir, level, uuid) {
 }
 
 /** Aktualisiert gespeicherte Spielerdaten, wenn Crafty bestätigt, dass der Server gestoppt ist. */
-export async function updateOfflinePlayer(dir, level, uuid, action, levels) {
+export async function updateOfflinePlayer(dir, level, uuid, action, levels, gameMode) {
   const id = String(uuid).toLowerCase();
   if (!/^[0-9a-f-]{32,36}$/.test(id)) throw new Error('Ungültige Spieler-UUID');
   const file = await findFile(dataDirs(path.join(dir, level)), id, '.dat');
@@ -208,12 +209,19 @@ export async function updateOfflinePlayer(dir, level, uuid, action, levels) {
     set('foodLevel', 20);
     if (root.foodSaturationLevel) set('foodSaturationLevel', 20);
     if (root.foodExhaustionLevel) set('foodExhaustionLevel', 0);
+  } else if (action === 'starve') {
+    set('foodLevel', 0);
+    if (root.foodSaturationLevel) set('foodSaturationLevel', 0);
+    if (root.foodExhaustionLevel) set('foodExhaustionLevel', 0);
   } else if (action === 'xp') {
     if (!Number.isInteger(levels) || levels < 0 || levels > 100000) throw new Error('Erfahrungslevel müssen zwischen 0 und 100.000 liegen.');
     set('XpLevel', levels);
     set('XpP', 0);
     const total = levels <= 16 ? levels * levels + 6 * levels : levels <= 31 ? 2.5 * levels ** 2 - 40.5 * levels + 360 : 4.5 * levels ** 2 - 162.5 * levels + 2220;
     if (root.XpTotal) set('XpTotal', Math.floor(total));
+  } else if (action === 'gamemode') {
+    if (![0, 1, 2, 3].includes(gameMode)) throw new Error('Ungültiger Spielmodus');
+    set('playerGameType', gameMode);
   } else throw new Error('Unbekannte Spieleraktion');
 
   const data = nbt.writeUncompressed(parsed, type);

@@ -288,8 +288,9 @@ async function viewList() {
         return;
       }
       const a = S.cfg.api;
+      const note = S.cfg.mode === 'volumes' && a.configured && a.error ? h('div', { class: 'page-note' }, `Crafty-API nicht erreichbar: ${a.error} `, h('a', { href: '#/settings/connection' }, 'Einstellungen')) : undefined;
       wrap.replaceChildren(
-        S.cfg.mode === 'volumes' && a.configured && a.error ? h('div', { class: 'page-note' }, `Crafty-API nicht erreichbar: ${a.error} `, h('a', { href: '#/settings/connection' }, 'Einstellungen')) : null,
+        ...(note ? [note] : []),
         h('div', { class: 'grid' },
           list.map((s) =>
             h('div', { class: `scard s-${s.status}`, onclick: () => (location.hash = `#/s/${s.id}`) },
@@ -311,28 +312,38 @@ async function viewList() {
 /* ---------- Server-Seite ---------- */
 
 const TABS = [
-  ['overview', 'Übersicht', 'server'],
+  ['overview', 'Server', 'server'],
+  ['properties', 'Options', 'sliders'],
+  ['console', 'Konsole', 'terminal'],
+  ['log', 'Log', 'file'],
   ['players', 'Spieler', 'players'],
   ['whitelist', 'Whitelist', 'shield'],
-  ['properties', 'Einstellungen', 'sliders'],
   ['files', 'Dateien', 'folder'],
   ['backups', 'Backups', 'cloud'],
 ];
+const PAGE_TITLES = { overview: 'Server', properties: 'Options', console: 'Konsole', log: 'Log', players: 'Spielerdetails', whitelist: 'Spielerlisten', files: 'Dateien', backups: 'Backups' };
 
 async function viewServer(id, tab) {
   let info = await api(`/servers/${id}`);
   const hooks = {};
   const head = h('div', { class: 'page-head' });
-  const paintHead = () =>
-    head.replaceChildren(h('h1', {}, info.name), statusEl(info.status), h('span', { class: 'sp' }), ...controls(id, info.status, info.api, false));
+  const paintHead = () => {
+    const actions = h('div', { class: 'server-head-actions' }, controls(id, info.status, info.api, false));
+    head.replaceChildren(h('h1', {}, PAGE_TITLES[tab] || 'Server'), statusEl(info.status), h('span', { class: 'sp' }), actions);
+  };
   paintHead();
   const body = h('div');
   const serverNav = h('nav', { class: 'server-nav', 'aria-label': 'Servernavigation' },
+    h('div', { class: 'server-nav-server' },
+      h('span', { class: 'server-nav-mark' }),
+      h('div', {}, h('b', {}, info.name), h('small', {}, info.port ? `Port ${info.port}` : 'Minecraft-Server')),
+      statusEl(info.status)),
     TABS.map(([key, label, iconName]) => h('a', { href: `#/s/${id}/${key}`, class: key === tab ? 'active' : '' }, ico(iconName, 17), h('span', {}, label))));
   $app.replaceChildren(
-    h('a', { class: 'back', href: '#/' }, ico('back', 16), 'Alle Server'),
-    head,
-    h('div', { class: 'server-shell' }, serverNav, body),
+    h('div', { class: 'server-shell' }, serverNav,
+      h('main', { class: 'server-main' },
+        h('div', { class: 'server-toolbar' }, h('a', { class: 'back', href: '#/' }, ico('back', 16), 'Alle Server'), head),
+        body)),
   );
   every(async () => {
     try {
@@ -343,7 +354,7 @@ async function viewServer(id, tab) {
       /* nächster Versuch */
     }
   }, 4000);
-  const view = { overview: tOverview, players: tPlayers, whitelist: tWhitelist, properties: tProperties, files: tFiles, backups: tBackups }[tab] || tOverview;
+  const view = { overview: tOverview, players: tPlayers, whitelist: tWhitelist, properties: tProperties, console: tConsole, log: tLog, files: tFiles, backups: tBackups }[tab] || tOverview;
   await view(id, info, body, hooks);
 }
 
@@ -354,18 +365,27 @@ async function tOverview(id, info, el, hooks) {
   const paint = (i) =>
     tiles.replaceChildren(
       ...[
-        ['Status', STATUS[i.status]],
-        ['Spieler', i.api ? `${i.online}/${i.max || '–'}` : `max. ${i.max || '–'}`],
-        ['Version', i.version || '–'],
-        ['CPU', i.api ? `${i.cpu}%` : '–'],
-        ['RAM', i.mem || '–'],
-        ['Welt', i.level],
-        ['Port', i.port || '–'],
-      ].map(([k, v]) => h('div', { class: 'tile' }, h('small', {}, k), h('b', {}, v))),
+        ['Status', STATUS[i.status], 'server'],
+        ['Spieler', i.api ? `${i.online}/${i.max || '–'}` : `Max. ${i.max || '–'}`, 'players'],
+        ['Version', i.version || '–', 'file'],
+        ['CPU', i.api ? `${i.cpu}%` : '–', 'sliders'],
+        ['RAM', i.mem || '–', 'server'],
+        ['Welt', i.level || 'world', 'folder'],
+        ['Port', i.port || '–', 'terminal'],
+      ].map(([k, v, iconName]) => h('div', { class: 'tile' }, h('div', { class: 'tile-label' }, ico(iconName, 17), h('small', {}, k)), h('b', {}, v))),
     );
   paint(info);
   hooks.onInfo = paint;
 
+  el.append(tiles,
+    h('div', { class: 'panel server-summary-panel' },
+      h('div', { class: 'ph' }, 'Serverinformationen'),
+      h('div', { class: 'pb server-summary-grid' },
+        [['Software', info.type || 'Minecraft'], ['Spieler', info.api ? `${info.online}/${info.max || '–'}` : `Max. ${info.max || '–'}`], ['Version', info.version || '–'], ['Welt', info.level || 'world'], ['Anschluss', info.port || '–'], ['Status', STATUS[info.status] || 'Unbekannt']]
+          .map(([label, value]) => h('div', { class: 'server-summary-item' }, h('small', {}, label), h('b', {}, value))))));
+}
+
+async function tConsole(id, info, el) {
   const con = h('div', { class: 'console' });
   const input = h('input', { placeholder: info.api ? 'Befehl, z. B. say Hallo (ohne /)' : 'Befehle benötigen die Crafty-API', disabled: !info.api, onkeydown: (e) => e.key === 'Enter' && run() });
   const run = guard(async () => {
@@ -385,15 +405,24 @@ async function tOverview(id, info, el, hooks) {
       con.textContent = e.message;
     }
   };
-  el.append(
-    tiles,
-    h('div', { class: 'panel' },
-      h('div', { class: 'ph' }, 'Konsole', h('span', { class: 'sp' }), !info.api && h('span', { class: 'panel-sub' }, 'Anzeige aus logs/latest.log')),
-      h('div', { class: 'pb' }, con, h('div', { class: 'cmd' }, input, btn('Senden', { onclick: run, disabled: !info.api })))),
-  );
+  el.append(h('div', { class: 'panel' },
+    h('div', { class: 'ph' }, 'Konsole', h('span', { class: 'sp' }), !info.api && h('span', { class: 'panel-sub' }, 'Anzeige aus logs/latest.log')),
+    h('div', { class: 'pb' }, con, h('div', { class: 'cmd' }, input, btn('Senden', { onclick: run, disabled: !info.api })))));
   await loadLogs();
   con.scrollTop = con.scrollHeight;
   every(loadLogs, 3000);
+}
+
+async function tLog(id, _info, el) {
+  const log = h('div', { class: 'console server-log' }, 'Log wird geladen …');
+  const load = guard(async () => {
+    const { lines } = await api(`/servers/${id}/logs`);
+    log.textContent = lines.length ? lines.join('\n') : 'Noch keine Logausgabe.';
+    log.scrollTop = log.scrollHeight;
+  });
+  el.append(h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'Server-Log'), h('div', { class: 'pb' }, log)));
+  await load();
+  every(load, 4000);
 }
 
 /* --- Spieler & Inventar --- */
@@ -419,19 +448,27 @@ async function tPlayers(id, info, el) {
     if (!filtered.length) list.append(h('div', { class: 'list-empty' }, query ? 'Kein passender Spieler.' : 'Noch keine Spieler bekannt.'));
   };
   detail.append(h('div', { class: 'empty player-placeholder' }, h('h2', {}, 'Spieler auswählen'), h('p', {}, 'Wähle links einen Spieler aus, um Status, Inventar und Statistiken zu sehen.')));
-  el.append(h('div', { class: 'pl-layout' },
+  const layout = h('div', { class: 'pl-layout' },
     h('div', { class: 'panel player-list-panel' },
       h('div', { class: 'ph' }, h('span', {}, 'Spieler'), count, h('span', { class: 'sp' }), btn('', { icon: 'restart', kind: 'ghost', sm: true, onclick: () => load(), title: 'Aktualisieren' })),
       h('div', { class: 'player-search-wrap' }, search), list),
-    detail));
+    detail);
+  el.append(layout);
   let selected = null;
   const load = guard(async () => {
     playerRows = await api(`/servers/${id}/players`);
     paintList();
   });
   const showPlayer = guard(async (p) => {
+    layout.classList.add('selected');
     detail.replaceChildren(h('p', { class: 'muted' }, 'Lade …'));
-    detail.replaceChildren(playerView(p, await api('/servers/' + id + '/players/' + p.uuid), info.api, id, () => showPlayer(p)));
+    detail.replaceChildren(playerView(p, await api('/servers/' + id + '/players/' + p.uuid), info.api, id, refreshPlayer, ['online', 'starting'].includes(info.status)));
+  });
+  const refreshPlayer = guard(async () => {
+    playerRows = await api(`/servers/${id}/players`);
+    paintList();
+    const current = playerRows.find((p) => p.uuid === selected);
+    if (current) detail.replaceChildren(playerView(current, await api(`/servers/${id}/players/${current.uuid}`), info.api, id, refreshPlayer, ['online', 'starting'].includes(info.status)));
   });
   await load();
 }
@@ -440,66 +477,92 @@ const GM = ['Überleben', 'Kreativ', 'Abenteuer', 'Zuschauer'];
 const dimName = (d) => (d ? pretty(d.replace('minecraft:', '')) : '');
 const posStr = (p) => (p ? `X ${p[0]}  Y ${p[1]}  Z ${p[2]}` : '–');
 
-function playerView(p, d, hasApi, serverId, refresh) {
+function playerView(p, d, hasApi, serverId, refresh, serverRunning) {
   const out = h('div');
+  const gamemode = h('select', { class: 'player-gamemode', 'aria-label': 'Spielmodus', onchange: guard(async (e) => {
+    await send('POST', `/servers/${serverId}/players/${p.uuid}/action`, { action: 'gamemode', gameMode: Number(e.target.value) });
+    toast('Spielmodus geändert');
+    setTimeout(refresh, 350);
+  }) }, GM.map((label, i) => h('option', { value: i, selected: i === Number(d.gameMode) }, label)));
   out.append(
-    h('div', { class: 'panel' },
-    h('div', { class: 'phead' },
-        h('img', { src: headUrl(p.uuid), alt: '' }),
-        h('div', {}, h('h2', {}, p.name || 'Spieler'), h('div', { class: 'muted player-subtitle' }, p.name ? 'Spielerprofil' : 'Name nicht verfügbar')),
-        h('span', { class: 'sp' }),
-        p.online && h('span', { class: 'chip green' }, 'Online'))),
+    h('div', { class: 'player-identity' },
+      h('img', { src: headUrl(p.uuid), alt: '', class: 'player-face' }),
+      h('div', { class: 'identity-text' },
+        h('h2', {}, p.name || 'Spieler'),
+        h('div', { class: 'identity-status' }, statusEl(p.online ? 'online' : 'offline')),
+        h('div', { class: 'identity-uuid mono' }, p.uuid)),
+      h('span', { class: 'sp' }),
+      h('label', { class: 'player-gamemode-wrap' }, ico('players', 17), gamemode)),
   );
-  if (!d.hasData) out.append(h('p', { class: 'muted' }, 'Für diesen Spieler liegen noch keine Spielerdaten vor.'));
+  if (!d.hasData) out.append(h('div', { class: 'empty player-no-data' }, h('h2', {}, 'Keine Spielerdaten'), h('p', {}, 'Für diesen Spieler wurden noch keine Spielerdaten gespeichert.')));
   else {
     const hp = Math.max(0, Math.min(20, Number(d.health) || 0));
     const food = Math.max(0, Math.min(20, Number(d.food) || 0));
-    const hearts = range(0, 10).map((i) => {
-      const on = hp > i * 2;
-      const e = h('span', { class: 'heart' + (on ? '' : ' off') }, ico('heart', 20));
-      if (hp === i * 2 + 1) e.style.opacity = '.6';
-      return e;
+    const hearts = range(0, 10).map((i) => h('span', { class: 'heart' + (hp > i * 2 ? '' : ' off') }, ico('heart', 21)));
+    const foods = range(0, 10).map((i) => h('span', { class: 'food' + (food > i * 2 ? '' : ' off') }, ico('food', 20)));
+    const needsOnline = serverRunning && !p.online;
+    const action = (key, label, icon, kind, extra = {}) => btn(label, {
+      icon, kind, cls: 'player-control-action', disabled: extra.disabled || needsOnline,
+      onclick: guard(async () => {
+        const result = await send('POST', `/servers/${serverId}/players/${p.uuid}/action`, { action: key });
+        if (result.mode === 'online' && (key === 'heal' || key === 'feed')) {
+          const row = out.querySelectorAll('.vitals')[key === 'heal' ? 0 : 1];
+          const kindName = key === 'heal' ? 'heart' : 'food';
+          d[key === 'heal' ? 'health' : 'food'] = 20;
+          row?.querySelector('.vital-value')?.replaceChildren('20/20');
+          row?.querySelectorAll(`.vital-icons .${kindName}`).forEach((item) => item.classList.remove('off'));
+          toast(`${label}: Befehl an Crafty gesendet`);
+        } else {
+          toast(result.mode === 'offline' ? `${label}: Spielerdaten gespeichert` : `${label} ausgeführt`);
+          setTimeout(refresh, 350);
+        }
+      }),
     });
-    const foods = range(0, 10).map((i) => h('span', { class: 'food' + (food > i * 2 ? '' : ' off') }, ico('food', 18)));
+    const flagRow = (label, key, iconName) => h('div', { class: 'flag-row' },
+      ico(iconName, 19), h('b', {}, label), h('span', { class: 'sp' }),
+      h('span', { class: 'flag-state' + (p[key] ? ' enabled' : '') }, p[key] ? 'Aktiv' : 'Inaktiv'),
+      h('button', { type: 'button', class: 'flag-toggle' + (p[key] ? ' on' : ''), role: 'switch', 'aria-checked': p[key] ? 'true' : 'false', 'aria-label': `${label} ${p[key] ? 'deaktivieren' : 'aktivieren'}`, onclick: guard(async () => {
+        await send('POST', `/servers/${serverId}/players/${p.uuid}/flag`, { flag: key, enabled: !p[key] });
+        toast(`${label} ${p[key] ? 'entfernt' : 'aktiviert'}`);
+        await refresh();
+      }) }),
+    );
+    const xpInput = h('input', { type: 'number', min: 0, max: 100000, value: d.xpLevel || 0, 'aria-label': 'Erfahrungslevel' });
     out.append(
-      h('div', { class: 'panel player-vitals' },
-        h('div', { class: 'ph' }, 'Leben und Erfahrung'),
-        h('div', { class: 'pb' },
-          h('div', { class: 'xp-level' }, `Level ${d.xpLevel}`),
-          h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round(Math.max(0, Math.min(1, Number(d.xpProgress) || 0)) * 100)}%` })),
-          h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Leben'), hearts, h('b', { class: 'vital-value' }, `${hp}/20`), h('span', { class: 'sp' }),
-            btn('Heilen', { icon: 'heart', kind: 'success', sm: true, title: 'Leben auffüllen', cls: 'vital-action', onclick: guard(async () => {
-              const result = await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'heal' });
-              toast(result.mode === 'offline' ? 'Leben auf 20 gesetzt' : 'Heilung an Crafty gesendet');
+      h('div', { class: 'player-detail-grid' },
+        h('section', { class: 'panel player-vitals' },
+          h('div', { class: 'ph' }, ico('heart', 20), 'Leben und Erfahrung'),
+          h('div', { class: 'pb' },
+            h('div', { class: 'xp-level' }, `Level ${d.xpLevel}`),
+            h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round(Math.max(0, Math.min(1, Number(d.xpProgress) || 0)) * 100)}%` })),
+            h('div', { class: 'vitals' },
+              action('kill', 'Töten', 'x', 'danger', { disabled: !hasApi || !p.online }),
+              h('div', { class: 'vital-icons' }, hearts),
+              h('b', { class: 'vital-value' }, `${hp}/20`),
+              action('heal', 'Heilen', 'heart', 'success')),
+            h('div', { class: 'vitals' },
+              action('starve', 'Aushungern', 'food', 'danger'),
+              h('div', { class: 'vital-icons' }, foods),
+              h('b', { class: 'vital-value' }, `${food}/20`),
+              action('feed', 'Füttern', 'food', 'success')),
+            h('div', { class: 'xp-set' }, h('label', {}, 'Erfahrung'), xpInput, btn('Level setzen', { kind: 'ghost', sm: true, onclick: guard(async () => {
+              const levels = Number(xpInput.value);
+              const result = await send('POST', `/servers/${serverId}/players/${p.uuid}/action`, { action: 'xp', levels });
+              toast(result.mode === 'offline' ? 'Erfahrungslevel gespeichert' : 'Erfahrungslevel geändert');
               setTimeout(refresh, 350);
             }) })),
-          h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Hunger'), foods, h('b', { class: 'vital-value' }, `${food}/20`), h('span', { class: 'sp' }),
-            btn('Füttern', { icon: 'food', kind: 'success', sm: true, title: 'Hunger stillen', cls: 'vital-action', onclick: guard(async () => {
-              const result = await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'feed' });
-              toast(result.mode === 'offline' ? 'Hunger aufgefüllt' : 'Sättigung an Crafty gesendet');
-              setTimeout(refresh, 350);
-            }) })),
-          h('div', { class: 'btn-row player-actions' },
-            !hasApi && h('span', { class: 'muted player-action-note' }, 'Ohne Crafty-API muss der Server für Änderungen an Spielerdaten gestoppt sein.'),
-            h('label', { class: 'xp-control' }, h('span', {}, 'Erfahrungslevel'), h('input', { type: 'number', min: 0, max: 100000, value: d.xpLevel || 0 })),
-            btn('Erfahrung setzen', { kind: 'ghost', sm: true, onclick: guard(async (e) => {
-              const input = e?.currentTarget?.parentElement?.querySelector('.xp-control input');
-              const levels = Number(input?.value ?? d.xpLevel ?? 0);
-              const result = await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'xp', levels });
-              toast(result.mode === 'offline' ? 'Erfahrungslevel gespeichert' : 'Erfahrungslevel an Crafty gesendet');
-              setTimeout(refresh, 350);
-            }) })))),
-      h('div', { class: 'panel' },
-        h('div', { class: 'ph' }, 'Informationen'),
-        h('div', { class: 'pb' },
-          h('div', { class: 'tiles', style: 'margin:0' },
-            [
-              ['Spielmodus', GM[d.gameMode] ?? d.gameMode],
-              ['Aktuelle Position', `${posStr(d.pos)}\n${dimName(d.dimension)}`],
-              ['Respawn', d.spawn ? posStr(d.spawn) : '–'],
-              ['Letzter Tod', d.lastDeath ? `${posStr(d.lastDeath.pos)}\n${dimName(d.lastDeath.dimension)}` : '–'],
-            ].map(([k, v]) => h('div', { class: 'tile player-info-tile' }, h('small', {}, k), h('b', {}, v)))),
-          h('p', { class: 'muted', style: 'font-size:12px;margin:10px 0 0' }, `Spielerdaten gespeichert: ${fmtDate(d.updated)} (der Server schreibt sie beim Speichern/Ausloggen)`))),
+            needsOnline
+              ? h('p', { class: 'player-action-note' }, 'Zum Ändern muss der Spieler online sein. Für Offline-Spielerdaten stoppe zuerst den Server.')
+              : !hasApi && h('p', { class: 'player-action-note' }, 'Ohne Crafty-API werden Änderungen direkt in den gespeicherten Spielerdaten abgelegt.'))),
+        h('section', { class: 'panel player-control' },
+          h('div', { class: 'ph' }, ico('sliders', 19), 'Spielerkontrolle'),
+          h('div', { class: 'pb flag-list' }, flagRow('Whitelist', 'whitelisted', 'shield'), flagRow('Gesperrt', 'banned', 'x'), flagRow('Operator', 'op', 'players')))),
+      h('section', { class: 'panel player-info' },
+        h('div', { class: 'ph' }, ico('players', 19), 'Spielerinformationen'),
+        h('div', { class: 'pb player-info-grid' },
+          [['Position', `${posStr(d.pos)}\n${dimName(d.dimension)}`], ['Respawnpunkt', d.spawn ? posStr(d.spawn) : '–'], ['Letzter Tod', d.lastDeath ? `${posStr(d.lastDeath.pos)}\n${dimName(d.lastDeath.dimension)}` : '–'], ['Spielzeit', d.stats ? fmtTicks(d.stats.playTimeTicks) : '–']]
+            .map(([label, value]) => h('div', { class: 'player-info-tile' }, ico('server', 17), h('span', {}, h('small', {}, label), h('b', {}, value))))),
+        h('div', { class: 'player-updated' }, `Spielerdaten gespeichert: ${fmtDate(d.updated)}`)),
       inventoryPanel(d),
     );
   }

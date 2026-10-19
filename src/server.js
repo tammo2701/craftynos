@@ -314,13 +314,16 @@ app.post(
     const level = prop(await propsOf(dir), 'level-name', 'world');
     const action = req.body?.action;
     const levels = Number(req.body?.levels);
+    const gameMode = Number(req.body?.gameMode);
     if (action === 'xp' && (!Number.isInteger(levels) || levels < 0 || levels > 100000))
       throw new HttpError(400, 'Erfahrungslevel müssen zwischen 0 und 100.000 liegen.');
-    if (!['heal', 'feed', 'xp'].includes(action)) throw new HttpError(400, 'Unbekannte Spieleraktion');
+    if (action === 'gamemode' && ![0, 1, 2, 3].includes(gameMode)) throw new HttpError(400, 'Ungültiger Spielmodus');
+    if (!['heal', 'feed', 'xp', 'gamemode', 'kill', 'starve'].includes(action)) throw new HttpError(400, 'Unbekannte Spieleraktion');
 
     if (!hasApi) {
       try {
-        await updateOfflinePlayer(dir, level, req.params.uuid, action, levels);
+        if (action === 'kill') throw new Error('Töten ist nur möglich, wenn der Server läuft und mit Crafty verbunden ist.');
+        await updateOfflinePlayer(dir, level, req.params.uuid, action, levels, gameMode);
         return res.json({ ok: true, mode: 'offline' });
       } catch (e) {
         throw new HttpError(409, e.message);
@@ -330,20 +333,71 @@ app.post(
     if (state.running) {
       const player = (await knownPlayers(dir, level, state.players)).find((p) => p.uuid === req.params.uuid.toLowerCase());
       if (!player?.name || !NAME_RE.test(player.name)) throw new HttpError(404, 'Spielername nicht gefunden');
+      if (!player.online && ['heal', 'feed', 'xp', 'gamemode', 'kill', 'starve'].includes(action))
+        throw new HttpError(409, 'Der Spieler muss online sein. Für gespeicherte Spielerdaten stoppe den Server zuerst.');
       const commands = {
-        heal: `effect give ${player.name} minecraft:instant_health 1 10 true`,
-        feed: `effect give ${player.name} minecraft:saturation 1 10 true`,
+        heal: `effect give ${player.name} minecraft:instant_health 1 5 true`,
+        feed: `effect give ${player.name} minecraft:saturation 1 20 true`,
         xp: `experience set ${player.name} ${levels} levels`,
+        gamemode: `gamemode ${['survival', 'creative', 'adventure', 'spectator'][gameMode]} ${player.name}`,
+        kill: `kill ${player.name}`,
+        starve: `effect give ${player.name} minecraft:hunger 1 255 true`,
       };
       await crafty.stdin(server.server_id, commands[action]);
       return res.json({ ok: true, mode: 'online' });
     }
     try {
-      await updateOfflinePlayer(dir, level, req.params.uuid, action, levels);
+      await updateOfflinePlayer(dir, level, req.params.uuid, action, levels, gameMode);
       res.json({ ok: true, mode: 'offline' });
     } catch (e) {
       throw new HttpError(409, e.message);
     }
+  }),
+);
+
+app.post(
+  '/api/servers/:id/players/:uuid/flag',
+  h(async (req, res) => {
+    const { server, dir } = await ctx(req.params.id);
+    const { uuid } = req.params;
+    const flag = req.body?.flag;
+    const enabled = Boolean(req.body?.enabled);
+    if (!['whitelisted', 'op', 'banned'].includes(flag)) throw new HttpError(400, 'Unbekannte Spielereigenschaft');
+    const level = prop(await propsOf(dir), 'level-name', 'world');
+    const player = (await knownPlayers(dir, level)).find((p) => p.uuid === uuid.toLowerCase());
+    if (!player?.name || !NAME_RE.test(player.name)) throw new HttpError(404, 'Spielername nicht gefunden');
+    const state = await stateOf(server.server_id).catch(() => unknownStats());
+    if (state.running) {
+      await requireApi();
+      const commands = {
+        whitelisted: enabled ? `whitelist add ${player.name}` : `whitelist remove ${player.name}`,
+        op: enabled ? `op ${player.name}` : `deop ${player.name}`,
+        banned: enabled ? `ban ${player.name}` : `pardon ${player.name}`,
+      };
+      await crafty.stdin(server.server_id, commands[flag]);
+      await new Promise((r) => setTimeout(r, 500));
+    } else {
+      const files = { whitelisted: 'whitelist.json', op: 'ops.json', banned: 'banned-players.json' };
+      const file = path.join(dir, files[flag]);
+      const rows = await readJson(file, []);
+      const kept = rows.filter((p) => String(p.uuid).toLowerCase() !== uuid.toLowerCase());
+      if (enabled) {
+        const entry = flag === 'op'
+          ? { uuid, name: player.name, level: 4, bypassesPlayerLimit: false }
+          : flag === 'banned'
+            ? { uuid, name: player.name, created: new Date().toISOString(), source: 'Craftynos', expires: null, reason: 'Banned by an operator' }
+            : { uuid, name: player.name };
+        kept.push(entry);
+      }
+      const temp = `${file}.${crypto.randomUUID()}.tmp`;
+      try {
+        await fsp.writeFile(temp, JSON.stringify(kept, null, 2));
+        await fsp.rename(temp, file);
+      } finally {
+        await fsp.rm(temp, { force: true }).catch(() => {});
+      }
+    }
+    res.json({ ok: true, flag, enabled });
   }),
 );
 
