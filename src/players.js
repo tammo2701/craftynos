@@ -65,20 +65,22 @@ export async function knownPlayers(dir, level, onlineNames = []) {
 const num = (v, d = 0) => (typeof v === 'number' ? v : d);
 
 function normItem(it, slot) {
-  if (!it || !it.id) return null;
+  if (it?.item && typeof it.item === 'object') it = { ...it.item, Slot: it.Slot ?? it.slot };
+  const id = typeof it?.id === 'string' ? it.id : typeof it?.name === 'string' ? it.name : '';
+  if (!id) return null;
   const count = it.count ?? it.Count ?? 1;
   const customName = it.components?.['minecraft:custom_name'] ?? it.tag?.display?.Name;
   return {
     slot,
-    id: it.id,
-    name: String(it.id).replace(/^minecraft:/, ''),
-    count: num(count, 1),
+    id,
+    name: id.replace(/^minecraft:/, ''),
+    count: Math.max(1, num(Number(count), 1)),
     customName: typeof customName === 'string' ? customName.slice(0, 120) : undefined,
   };
 }
 
 function itemList(arr) {
-  return (arr || []).map((it) => normItem(it, num(it.Slot, 0))).filter(Boolean);
+  return (Array.isArray(arr) ? arr : []).map((it, index) => normItem(it, Number.isInteger(Number(it?.Slot ?? it?.slot)) ? Number(it.Slot ?? it.slot) : index)).filter(Boolean);
 }
 
 function posOf(v) {
@@ -133,14 +135,20 @@ export async function playerDetail(dir, level, uuid) {
   if (datPath) {
     out.updated = (await fsp.stat(datPath)).mtimeMs;
     const { parsed } = await nbt.parse(await fsp.readFile(datPath));
-    const p = nbt.simplify(parsed);
+    const root = nbt.simplify(parsed);
+    const p = root.Data && typeof root.Data === 'object' ? { ...root, ...root.Data } : root;
     const inventory = itemList(p.Inventory);
     // Ab 1.21.5 liegt die Ausrüstung in "equipment"
     const eq = p.equipment || {};
     for (const [key, slot] of [['feet', 100], ['legs', 101], ['chest', 102], ['head', 103], ['offhand', -106]]) {
-      const it = normItem(eq[key], slot);
+      const entry = Array.isArray(eq) ? eq.find((x) => x?.slot === key || x?.Slot === slot) : eq[key];
+      const it = normItem(entry, slot);
       if (it) inventory.push(it);
     }
+    const heldSlot = Math.max(0, Math.min(8, num(p.SelectedItemSlot)));
+    const mainhandEntry = Array.isArray(eq) ? eq.find((x) => x?.slot === 'mainhand' || x?.Slot === heldSlot) : eq.mainhand;
+    const mainhand = normItem(mainhandEntry, heldSlot);
+    if (mainhand && !inventory.some((item) => item.slot === heldSlot)) inventory.push(mainhand);
     const respawn = p.respawn || {};
     const death = p.LastDeathLocation;
     out.health = num(p.Health, 20);

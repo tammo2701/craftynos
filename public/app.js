@@ -45,6 +45,8 @@ const ICONS = {
   x: 'M6 6l12 12M18 6L6 18',
   heart: 'M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.4-7 10-7 10z',
   food: 'M15 4a5 5 0 0 1 3.5 8.5L14 17l-7-7 4.5-4.5A5 5 0 0 1 15 4zM7 10l-3 3 2 2 3-3',
+  chest: 'M3 7l9-4 9 4v12l-9 3-9-3zM3 7l9 4 9-4M12 11v11M7 9v4m10-4v4',
+  backpack: 'M6 8V6a6 6 0 0 1 12 0v2M5 8h14v13H5zM8 8v5h8V8M9 17h6',
 };
 const FILLED = new Set(['play', 'stop', 'heart', 'food']);
 
@@ -183,9 +185,15 @@ function icon(name) {
     S.cfg.icons.item.replace('{name}', id),
     ...candidates.map((candidate) => S.cfg.icons.block.replace('{name}', candidate)),
   ];
+  // Fallback auf GitHub Raw, falls der CDN-Host im Browser nicht erreichbar ist.
+  for (const url of [...urls]) {
+    const mirror = url.replace('https://cdn.jsdelivr.net/gh/PrismarineJS/minecraft-assets@master/', 'https://raw.githubusercontent.com/PrismarineJS/minecraft-assets/master/');
+    if (mirror !== url) urls.push(mirror);
+  }
+  const uniqueUrls = [...new Set(urls)];
   let step = 0;
   const img = h('img', { alt: name, loading: 'lazy' });
-  const next = () => step < urls.length ? (img.src = urls[step++]) : img.replaceWith(h('span', { class: 'txt' }, pretty(id)));
+  const next = () => step < uniqueUrls.length ? (img.src = uniqueUrls[step++]) : img.replaceWith(h('span', { class: 'txt' }, pretty(id)));
   img.addEventListener('error', next);
   next();
   return img;
@@ -242,12 +250,12 @@ function controls(id, st, hasApi, sm) {
   const mk = (label, icon, kind, action, msg) =>
     btn(label, { icon, kind, sm, onclick: (e) => {
       e.stopPropagation();
-      if (action === 'update_executable' && !confirm('Crafty soll die Programmdatei dieses Servers aktualisieren. Fortfahren?')) return;
+      if (action === 'update_executable' && !confirm('Crafty soll diese Serverinstanz über die in Crafty hinterlegte Update-URL aktualisieren und vorher ein Backup erstellen. Fortfahren?')) return;
       doAction(id, action, msg);
     } });
   if (st === 'offline' || st === 'crashed' || st === 'unknown') return [
     mk('Starten', 'play', 'success', 'start_server', 'Start angefordert'),
-    mk('Programmdatei aktualisieren', 'download', 'ghost', 'update_executable', 'Crafty-Update gestartet'),
+    mk('Instanz über Crafty aktualisieren', 'download', 'ghost', 'update_executable', 'Crafty-Update gestartet'),
   ];
   return [mk('Stoppen', 'stop', 'danger', 'stop_server', 'Stop angefordert'), mk('Neustart', 'restart', 'ghost', 'restart_server', 'Neustart angefordert')];
 }
@@ -304,7 +312,7 @@ async function viewServer(id, tab) {
   const hooks = {};
   const head = h('div', { class: 'page-head' });
   const paintHead = () =>
-    head.replaceChildren(h('h1', {}, info.name), statusEl(info.status), h('span', { class: 'sp' }), controls(id, info.status, info.api, false));
+    head.replaceChildren(h('h1', {}, info.name), statusEl(info.status), h('span', { class: 'sp' }), ...controls(id, info.status, info.api, false));
   paintHead();
   const body = h('div');
   $app.replaceChildren(
@@ -388,7 +396,7 @@ async function tPlayers(id, info, el) {
       ...players.map((p) =>
         h('div', { class: 'pitem' + (p.uuid === selected ? ' sel' : ''), onclick: () => ((selected = p.uuid), load(), showPlayer(p)) },
           h('img', { src: headUrl(p.uuid), alt: '' }),
-          h('div', { style: 'flex:1;min-width:0' }, h('b', {}, p.name || p.uuid.slice(0, 8)), !p.hasData && h('div', { class: 'muted', style: 'font-size:12px' }, 'keine Spielerdaten')),
+          h('div', { style: 'flex:1;min-width:0' }, h('b', {}, p.name || 'Unbekannter Spieler'), !p.hasData && h('div', { class: 'muted', style: 'font-size:12px' }, 'keine Spielerdaten')),
           p.online && h('span', { class: 'chip green' }, 'online'),
           p.op && h('span', { class: 'chip orange' }, 'OP'),
           p.banned && h('span', { class: 'chip red' }, 'gebannt')),
@@ -398,7 +406,7 @@ async function tPlayers(id, info, el) {
   });
   const showPlayer = guard(async (p) => {
     detail.replaceChildren(h('p', { class: 'muted' }, 'Lade …'));
-    detail.replaceChildren(playerView(p, await api('/servers/' + id + '/players/' + p.uuid), info.api, id));
+    detail.replaceChildren(playerView(p, await api('/servers/' + id + '/players/' + p.uuid), info.api, id, () => showPlayer(p)));
   });
   await load();
 }
@@ -407,42 +415,45 @@ const GM = ['Überleben', 'Kreativ', 'Abenteuer', 'Zuschauer'];
 const dimName = (d) => (d ? pretty(d.replace('minecraft:', '')) : '');
 const posStr = (p) => (p ? `X ${p[0]}  Y ${p[1]}  Z ${p[2]}` : '–');
 
-function playerView(p, d, hasApi, serverId) {
+function playerView(p, d, hasApi, serverId, refresh) {
   const out = h('div');
   out.append(
     h('div', { class: 'panel' },
       h('div', { class: 'phead' },
         h('img', { src: headUrl(p.uuid), alt: '' }),
-        h('div', {}, h('h2', { style: 'font-size:22px' }, p.name || p.uuid), h('div', { class: 'muted mono', style: 'font-size:12px' }, p.uuid)),
+        h('div', {}, h('h2', { style: 'font-size:22px' }, p.name || 'Unbekannter Spieler'), h('div', { class: 'muted mono', style: 'font-size:12px' }, p.uuid)),
         h('span', { class: 'sp' }),
         p.online && h('span', { class: 'chip green' }, 'Online'))),
   );
   if (!d.hasData) out.append(h('p', { class: 'muted' }, 'Für diesen Spieler liegen noch keine Spielerdaten vor.'));
   else {
-    const hp = d.health ?? 20;
+    const hp = Math.max(0, Math.min(20, Number(d.health) || 0));
+    const food = Math.max(0, Math.min(20, Number(d.food) || 0));
     const hearts = range(0, 10).map((i) => {
       const on = hp > i * 2;
       const e = h('span', { class: 'heart' + (on ? '' : ' off') }, ico('heart', 20));
       if (hp === i * 2 + 1) e.style.opacity = '.6';
       return e;
     });
-    const foods = range(0, 10).map((i) => h('span', { class: 'food' + (d.food > i * 2 ? '' : ' off') }, ico('food', 18)));
+    const foods = range(0, 10).map((i) => h('span', { class: 'food' + (food > i * 2 ? '' : ' off') }, ico('food', 18)));
     out.append(
       h('div', { class: 'panel' },
         h('div', { class: 'ph' }, 'Leben und Erfahrung'),
         h('div', { class: 'pb' },
           h('div', { style: 'text-align:center;font-weight:700;margin-bottom:6px' }, `Level ${d.xpLevel}`),
-          h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round((d.xpProgress || 0) * 100)}%` })),
-          h('div', { class: 'vitals' }, hearts),
-          h('div', { class: 'vitals' }, foods),
+          h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round(Math.max(0, Math.min(1, Number(d.xpProgress) || 0)) * 100)}%` })),
+          h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Leben'), hearts, h('b', { class: 'vital-value' }, `${hp}/20`)),
+          h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Hunger'), foods, h('b', { class: 'vital-value' }, `${food}/20`)),
           p.online && hasApi && h('div', { class: 'btn-row player-actions' },
             btn('Leben auffüllen', { icon: 'heart', kind: 'danger', sm: true, onclick: guard(async () => {
               await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'heal' });
               toast('Heilung an Crafty gesendet');
+              setTimeout(refresh, 1000);
             }) }),
             btn('Hunger stillen', { icon: 'food', kind: 'ghost', sm: true, onclick: guard(async () => {
               await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'feed' });
               toast('Sättigung an Crafty gesendet');
+              setTimeout(refresh, 1000);
             }) }),
             h('label', { class: 'xp-control' }, h('span', {}, 'Erfahrungslevel'), h('input', { type: 'number', min: 0, max: 100000, value: d.xpLevel || 0 })),
             btn('Erfahrung setzen', { kind: 'ghost', sm: true, onclick: guard(async (e) => {
@@ -450,6 +461,7 @@ function playerView(p, d, hasApi, serverId) {
               const levels = Number(input?.value ?? d.xpLevel ?? 0);
               await send('POST', '/servers/' + serverId + '/players/' + p.uuid + '/action', { action: 'xp', levels });
               toast('Erfahrungslevel an Crafty gesendet');
+              setTimeout(refresh, 1000);
             }) })))),
       h('div', { class: 'panel' },
         h('div', { class: 'ph' }, 'Informationen'),
@@ -484,12 +496,26 @@ function inventoryPanel(d) {
   const ender = bySlot(d.enderChest);
   const grid = h('div', { class: 'inv' });
   const armor = h('div', { class: 'armor' }, [103, 102, 101, 100, -106].map((n) => slotEl(inv.get(n))));
-  const showInv = () => (grid.replaceChildren(...[...range(9, 36), ...range(0, 9)].map((n) => slotEl(inv.get(n)))), (armor.style.display = ''));
-  const showEnder = () => (grid.replaceChildren(...range(0, 27).map((n) => slotEl(ender.get(n)))), (armor.style.display = 'none'));
+  const knownInventorySlots = new Set([...range(0, 36), 100, 101, 102, 103, -106]);
+  const overflow = h('div', { class: 'inv-overflow' });
+  const showInv = () => {
+    const slots = [...range(9, 36), ...range(0, 9)];
+    grid.replaceChildren(...slots.map((n) => slotEl(inv.get(n))));
+    armor.style.display = '';
+    const extras = (d.inventory || []).filter((item) => !knownInventorySlots.has(item.slot));
+    overflow.replaceChildren(...extras.map((item) => h('div', { class: 'inv-extra' }, slotEl(item), h('span', {}, `${pretty(item.name)} · Slot ${item.slot}`))));
+    overflow.hidden = !extras.length;
+  };
+  const showEnder = () => {
+    const slots = [...range(0, Math.max(27, ...[...ender.keys()].map((n) => n + 1)))];
+    grid.replaceChildren(...slots.map((n) => slotEl(ender.get(n))));
+    armor.style.display = 'none';
+    overflow.hidden = true;
+  };
   showInv();
   return h('div', { class: 'panel' },
-    h('div', { class: 'ph' }, 'Inventar', h('span', { class: 'sp' }), btn('Inventar', { sm: true, onclick: showInv }), btn(`Endertruhe (${ender.size})`, { sm: true, kind: 'ghost', onclick: showEnder })),
-    h('div', { class: 'pb' }, h('div', { class: 'invwrap' }, armor, grid)));
+    h('div', { class: 'ph' }, 'Inventar', h('span', { class: 'sp' }), btn('Inventar', { icon: 'backpack', sm: true, onclick: showInv }), btn(`Endertruhe (${ender.size})`, { icon: 'chest', sm: true, kind: 'ghost', onclick: showEnder })),
+    h('div', { class: 'pb' }, h('div', { class: 'invwrap' }, armor, grid), overflow));
 }
 
 function statsPanel(s) {

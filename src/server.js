@@ -52,9 +52,13 @@ async function loadServersUncached() {
   const disk = await discoverServers().catch(() => []);
   const diskMap = new Map(disk.map((d) => [d.server_id, d]));
   const list = (apiList ?? disk).map((s) => {
-    const merged = { ...(diskMap.get(s.server_id) || {}), ...s };
+    const discovered = diskMap.get(String(s.server_id || '')) || {};
+    const merged = { ...discovered, ...s };
     merged.server_id = String(merged.server_id || s.server_id || '');
-    merged.server_name = plainText(merged.server_name, plainText(diskMap.get(s.server_id)?.server_name, merged.server_id || 'Unbenannter Server'));
+    const apiName = plainText(s.server_name);
+    const discoveredName = plainText(discovered.server_name);
+    merged.server_name = (apiName && !isServerIdName(apiName) ? apiName : '') ||
+      (discoveredName && !isServerIdName(discoveredName) ? discoveredName : '') || 'Minecraft-Server';
     merged.type = plainText(merged.type);
     merged.path = s.path || diskMap.get(s.server_id)?.path || path.join(env.craftyRoot, 'servers', s.server_id);
     merged._dir = mapPath(merged.path);
@@ -103,6 +107,7 @@ const plainText = (value, fallback = '') => {
   const text = String(value).trim();
   return !text || /^(false|null|undefined|\[object .+\])$/i.test(text) ? fallback : text;
 };
+const isServerIdName = (value) => /^[0-9a-f]{8}(?:-[0-9a-f-]{27})?$/i.test(String(value || '').trim());
 
 async function stateOf(id) {
   if (!(await loadServers()).api) return unknownStats();

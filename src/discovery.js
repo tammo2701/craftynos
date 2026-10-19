@@ -4,6 +4,18 @@ import { env } from './config.js';
 import { exists } from './files.js';
 import { parseProps } from './props.js';
 
+const isIdName = (value) => /^[0-9a-f]{8}(?:-[0-9a-f-]{27})?$/i.test(String(value || '').trim());
+
+function motdText(value) {
+  let text = String(value || '').trim();
+  try {
+    const parsed = JSON.parse(text);
+    const flatten = (v) => typeof v === 'string' ? v : Array.isArray(v) ? v.map(flatten).join('') : v && typeof v === 'object' ? `${flatten(v.text || '')}${flatten(v.extra || '')}` : '';
+    text = flatten(parsed);
+  } catch { /* einfache Properties-Zeichenfolge */ }
+  return text.replace(/§./g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
 /**
  * Liest die Crafty-Datenbank (nur lesend), falls /crafty/app/config gemountet ist.
  * Braucht node:sqlite (Node >= 22.13); sonst wird still auf den Ordner-Scan zurückgefallen.
@@ -45,17 +57,23 @@ export async function discoverServers() {
   const out = new Map(db.rows.map((r) => [r.server_id, r]));
   const serversDir = path.join(env.craftyRoot, 'servers');
   try {
+    let unnamed = 0;
     for (const ent of await fsp.readdir(serversDir, { withFileTypes: true })) {
-      if (!ent.isDirectory() || out.has(ent.name)) continue;
+      if (!ent.isDirectory()) continue;
       const dir = path.join(serversDir, ent.name);
-      let name = ent.name.slice(0, 8);
+      let properties = [];
       try {
-        const motd = parseProps(await fsp.readFile(path.join(dir, 'server.properties'), 'utf8')).find((e) => e.key === 'motd');
-        if (motd?.value) name = motd.value.replace(/§./g, '').slice(0, 40) || name;
+        properties = parseProps(await fsp.readFile(path.join(dir, 'server.properties'), 'utf8'));
       } catch {
         /* keine server.properties */
       }
-      out.set(ent.name, { server_id: ent.name, server_name: name, path: dir });
+      const existing = out.get(ent.name) || {};
+      const dbName = String(existing.server_name || '').trim();
+      const diskName = motdText(properties.find((e) => e.key === 'motd')?.value);
+      const levelName = String(properties.find((e) => e.key === 'level-name')?.value || '').trim();
+      const folderName = !isIdName(ent.name) ? ent.name : '';
+      const name = (!isIdName(dbName) && dbName) || diskName || levelName || folderName || `Minecraft-Server ${++unnamed}`;
+      out.set(ent.name, { ...existing, server_id: ent.name, server_name: name, path: existing.path || dir });
     }
   } catch {
     /* Ordner fehlt */

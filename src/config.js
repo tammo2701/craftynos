@@ -10,10 +10,10 @@ export const env = {
   // Platzhalter: {name} = Item-ID ohne "minecraft:", {uuid} = Spieler-UUID
   itemIconUrl:
     process.env.ITEM_ICON_URL ||
-    'https://cdn.jsdelivr.net/gh/PrismarineJS/minecraft-assets@master/data/1.21.1/items/{name}.png',
+    'https://cdn.jsdelivr.net/gh/PrismarineJS/minecraft-assets@master/data/26.1/items/{name}.png',
   blockIconUrl:
     process.env.BLOCK_ICON_URL ||
-    'https://cdn.jsdelivr.net/gh/PrismarineJS/minecraft-assets@master/data/1.21.1/blocks/{name}.png',
+    'https://cdn.jsdelivr.net/gh/PrismarineJS/minecraft-assets@master/data/26.1/blocks/{name}.png',
   headUrl: process.env.HEAD_URL || 'https://mc-heads.net/avatar/{uuid}/64',
 };
 

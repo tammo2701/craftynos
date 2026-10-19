@@ -24,7 +24,7 @@ code, .mono { font-family: 'JetBrains Mono', Consolas, monospace; }
 
 /* ---- Kopfleiste ---- */
 .top { background: #17212a; border-bottom: 1px solid #2c3945; box-shadow: 0 2px 12px rgba(18, 26, 34, .16); }
-.top-in { max-width: 1600px; margin: 0 auto; height: 64px; display: flex; align-items: center; gap: 40px; padding: 0 clamp(18px, 3vw, 42px); }
+.top-in { width: 100%; max-width: none; margin: 0 auto; height: 64px; display: flex; align-items: center; gap: 40px; padding: 0 clamp(18px, 3vw, 42px); }
 .brand { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; font-size: 18px; letter-spacing: 0.01em; }
 #nav { display: flex; height: auto; gap: 4px; padding: 4px; border: 1px solid #2d3b47; border-radius: 9px; background: #202b35; }
 #nav a { display: flex; align-items: center; min-height: 36px; color: #aebbc6; font-size: 14px; font-weight: 600; border: 0; border-radius: 6px; padding: 0 14px; transition: background .15s, color .15s; }
@@ -37,7 +37,7 @@ code, .mono { font-family: 'JetBrains Mono', Consolas, monospace; }
 .warn .dot, .s-starting .dot, .s-updating .dot { background: var(--yellow); }
 .bad .dot, .s-crashed .dot { background: var(--red); }
 
-#app { max-width: 1600px; margin: 0 auto; padding: 30px clamp(18px, 3vw, 42px) 64px; }
+#app { width: 100%; max-width: none; margin: 0 auto; padding: 30px clamp(18px, 3vw, 42px) 64px; }
 h1 { margin: 0; font-size: 28px; font-weight: 700; }
 .page-head { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
 .page-head .sub { color: #5d6b78; }
@@ -133,7 +133,7 @@ textarea { width: 100%; height: auto; padding: 10px 12px; font-family: 'JetBrain
 .savebar { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; display: flex; gap: 12px; align-items: center; }
 
 /* ---- Spieler ---- */
-.pl-layout { display: grid; grid-template-columns: minmax(250px, 320px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.pl-layout { display: grid; grid-template-columns: minmax(260px, 22vw) minmax(0, 1fr); gap: 20px; align-items: start; }
 .pl-layout > * { min-width: 0; }
 @media (max-width: 900px) { .pl-layout { grid-template-columns: 1fr; } }
 .pitem { display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer; border-bottom: 1px solid var(--line); }
@@ -141,13 +141,15 @@ textarea { width: 100%; height: auto; padding: 10px 12px; font-family: 'JetBrain
 .pitem img, .phead img { width: 34px; height: 34px; image-rendering: pixelated; border-radius: 4px; background: #1f2831; }
 .phead { display: flex; align-items: center; gap: 16px; padding: 18px; }
 .phead img { width: 68px; height: 68px; }
-.vitals { display: flex; gap: 2px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+.vitals { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+.vital-label { width: 56px; color: #c4cfd9; font-size: 12px; font-weight: 700; }
+.vital-value { margin-left: 6px; color: #c4cfd9; font-size: 12px; font-variant-numeric: tabular-nums; }
 .vitals .off { color: #5a6671; }
 .vitals .heart { color: var(--red); }
 .vitals .food { color: var(--orange); }
 .xpbar { height: 10px; background: #4b5762; border-radius: 6px; overflow: hidden; }
 .xpbar > i { display: block; height: 100%; background: var(--green); }
-.invwrap { --slot-size: clamp(40px, 4.25vw, 64px); display: flex; gap: clamp(10px, 2vw, 20px); align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+.invwrap { --slot-size: clamp(48px, calc((100vw - 430px) / 9), 100px); display: flex; gap: clamp(10px, 2vw, 20px); align-items: flex-start; justify-content: flex-start; flex-wrap: wrap; }
 .inv { display: grid; grid-template-columns: repeat(9, var(--slot-size)); gap: 4px; background: #c6c6c6; padding: 8px; width: max-content; max-width: 100%; border: 3px solid #555; }
 .armor { display: grid; gap: 4px; background: #c6c6c6; padding: 8px; border: 3px solid #555; }
 .slot { width: var(--slot-size, clamp(40px, 4.25vw, 64px)); height: var(--slot-size, clamp(40px, 4.25vw, 64px)); background: #8b8b8b; border: 2px solid; border-color: #373737 #fff #fff #373737; position: relative; display: flex; align-items: center; justify-content: center; }
@@ -160,6 +162,10 @@ textarea { width: 100%; height: auto; padding: 10px 12px; font-family: 'JetBrain
 .exclude-list .checkrow { margin: 0; }
 .slot .cnt { position: absolute; right: 2px; bottom: 0; color: #fff; font-weight: 800; font-size: 14px; text-shadow: 1px 1px 0 #3f3f3f; }
 .slot .txt { font-size: 9px; color: #fff; text-align: center; line-height: 1; word-break: break-all; overflow: hidden; }
+.inv-overflow { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.inv-overflow[hidden] { display: none; }
+.inv-extra { display: flex; align-items: center; gap: 8px; color: #c4cfd9; font-size: 12px; }
+.inv-extra .slot { --slot-size: 48px; flex: 0 0 auto; }
 .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 28px; }
 .statgrid h3 { color: var(--blue); font-size: 17px; margin-bottom: 8px; }
 .sr { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 14px; }
