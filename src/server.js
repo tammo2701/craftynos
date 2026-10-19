@@ -504,6 +504,7 @@ async function runScheduledBackups() {
   try {
     const servers = (await loadServers(true)).list;
     const excluded = new Set(cfg.excludedServers || []);
+    await runSync({ pruneUploaded: true });
     for (const server of servers) {
       if (excluded.has(String(server.server_id)) || !server._dir || !(await exists(server._dir))) continue;
       try {
@@ -514,7 +515,7 @@ async function runScheduledBackups() {
         autoBackupState.servers ??= {};
         autoBackupState.servers[server.server_id] = (await worldFingerprint(server)).signature;
         saveAutoBackupState();
-        await runSync();
+        await runSync({ pruneUploaded: true });
         console.log(`Automatisches Backup erstellt: ${server.server_name || server.server_id}`);
       } catch (e) {
         console.error(`Automatisches Backup für ${server.server_name || server.server_id} fehlgeschlagen:`, e);
@@ -559,14 +560,18 @@ app.post(
         });
         const target = req.body?.targetId && settings.get().targets.find((t) => t.id === req.body.targetId);
         if (req.body?.targetId && !target) throw new HttpError(404, 'Backup-Ziel nicht gefunden');
+        let delivered = false;
         if (target && !target.auto) {
           job.step = `Wird auf „${target.name}“ übertragen …`;
           await uploadTo(target, safeJoin(root, job.file), `${server.server_name || server.server_id}/${job.file}`);
+          delivered = true;
         }
         if (settings.get().targets.some((t) => t.auto)) {
-          job.step = 'Wird auf Ziele kopiert …';
-          await runSync();
+          job.step = 'Wird an die Backup-Ziele übertragen …';
+          const sync = await runSync();
+          delivered ||= sync.copiedFiles.includes(`${server.server_id}/${job.file}`);
         }
+        if (delivered) await fsp.rm(safeJoin(root, job.file), { force: true });
         job.status = 'done';
         job.step = 'Fertig';
       } catch (e) {

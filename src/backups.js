@@ -92,14 +92,16 @@ function loadState() {
 
 let running = false;
 
-export async function runSync() {
-  if (running) return;
+export async function runSync({ pruneUploaded = false } = {}) {
+  if (running) return { copied: 0, failed: 0, pruned: 0, copiedFiles: [], prunedFiles: [], busy: true };
+  const result = { copied: 0, failed: 0, pruned: 0, copiedFiles: [], prunedFiles: [] };
   running = true;
   try {
     const targets = settings.get().targets.filter((t) => t.auto);
-    if (!targets.length) return;
+    if (!targets.length) return result;
     const state = loadState();
     const excluded = new Set(settings.get().backup.excludedServers || []);
+    const sources = [];
     for (const s of await provider()) {
       if (excluded.has(String(s.server_id))) continue;
       const root = s._backupDir;
@@ -107,21 +109,37 @@ export async function runSync() {
       for (const f of (await walk(root)).filter((x) => x.rel.toLowerCase().endsWith('.zip'))) {
         for (const t of targets) {
           const key = `${s.server_id}/${f.rel}`;
+          sources.push({ server: s, root, file: f, key });
           state[t.id] ??= {};
           if (state[t.id][key] === f.mtime) continue;
           try {
             await uploadTo(t, path.join(root, ...f.rel.split('/')), `${s.server_name}/${f.rel}`);
             state[t.id][key] = f.mtime;
+            result.copied++;
+            result.copiedFiles.push(key);
             note(`${s.server_name}/${f.rel} → ${t.name}`);
           } catch (e) {
+            result.failed++;
             note(`Fehler: ${s.server_name}/${f.rel} → ${t.name}: ${e.message}`);
           }
         }
       }
     }
+    if (pruneUploaded) {
+      const unique = new Map(sources.map((x) => [`${x.server.server_id}/${x.file.rel}`, x]));
+      for (const source of unique.values()) {
+        const complete = targets.every((t) => state[t.id]?.[source.key] === source.file.mtime);
+        if (!complete) continue;
+        await fsp.rm(path.join(source.root, ...source.file.rel.split('/')), { force: true });
+        result.pruned++;
+        result.prunedFiles.push(source.key);
+      }
+    }
     fs.writeFileSync(stateFile, JSON.stringify(state));
+    return result;
   } catch (e) {
     note('Abgleich fehlgeschlagen: ' + e.message);
+    return result;
   } finally {
     running = false;
   }
