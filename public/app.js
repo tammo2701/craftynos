@@ -270,7 +270,11 @@ function controls(id, st, hasApi, sm) {
 
 async function viewList() {
   const wrap = h('div');
-  $app.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Deine Server')), wrap);
+  $app.replaceChildren(
+    h('div', { class: 'page-head' }, h('h1', {}, 'Deine Server')),
+    h('p', { class: 'page-intro' }, 'Verwalte deine Minecraft-Server und behalte ihren Status im Blick.'),
+    wrap,
+  );
   const load = async () => {
     try {
       const list = await api('/servers');
@@ -310,7 +314,7 @@ const TABS = [
   ['overview', 'Übersicht', 'server'],
   ['players', 'Spieler', 'players'],
   ['whitelist', 'Whitelist', 'shield'],
-  ['properties', 'Properties', 'sliders'],
+  ['properties', 'Einstellungen', 'sliders'],
   ['files', 'Dateien', 'folder'],
   ['backups', 'Backups', 'cloud'],
 ];
@@ -397,21 +401,33 @@ async function tOverview(id, info, el, hooks) {
 async function tPlayers(id, info, el) {
   const list = h('div');
   const detail = h('div');
-  el.append(h('div', { class: 'pl-layout' }, h('div', { class: 'panel' }, h('div', { class: 'ph' }, 'Spieler', h('span', { class: 'sp' }), btn('', { icon: 'restart', kind: 'ghost', sm: true, onclick: () => load(), title: 'Aktualisieren' })), list), detail));
+  const search = h('input', { class: 'player-search', type: 'search', 'aria-label': 'Spieler suchen', placeholder: 'Spieler suchen …', oninput: () => paintList() });
+  const count = h('span', { class: 'panel-sub' }, '0 Spieler');
+  let playerRows = [];
+  const paintList = () => {
+    const query = search.value.trim().toLocaleLowerCase('de');
+    const filtered = playerRows.filter((p) => (p.name || 'Spieler').toLocaleLowerCase('de').includes(query));
+    count.textContent = `${filtered.length} Spieler`;
+    list.replaceChildren(...filtered.map((p) =>
+      h('button', { type: 'button', class: 'pitem' + (p.uuid === selected ? ' sel' : ''), 'aria-pressed': p.uuid === selected ? 'true' : 'false', onclick: () => ((selected = p.uuid), paintList(), showPlayer(p)) },
+        h('img', { src: headUrl(p.uuid), alt: '', loading: 'lazy' }),
+        h('div', { class: 'pitem-name' }, h('b', {}, p.name || 'Spieler'), !p.hasData && h('small', {}, 'Keine Spielerdaten')),
+        p.online && h('span', { class: 'chip green' }, 'Online'),
+        p.op && h('span', { class: 'chip orange' }, 'OP'),
+        p.banned && h('span', { class: 'chip red' }, 'Gesperrt')),
+    ));
+    if (!filtered.length) list.append(h('div', { class: 'list-empty' }, query ? 'Kein passender Spieler.' : 'Noch keine Spieler bekannt.'));
+  };
+  detail.append(h('div', { class: 'empty player-placeholder' }, h('h2', {}, 'Spieler auswählen'), h('p', {}, 'Wähle links einen Spieler aus, um Status, Inventar und Statistiken zu sehen.')));
+  el.append(h('div', { class: 'pl-layout' },
+    h('div', { class: 'panel player-list-panel' },
+      h('div', { class: 'ph' }, h('span', {}, 'Spieler'), count, h('span', { class: 'sp' }), btn('', { icon: 'restart', kind: 'ghost', sm: true, onclick: () => load(), title: 'Aktualisieren' })),
+      h('div', { class: 'player-search-wrap' }, search), list),
+    detail));
   let selected = null;
   const load = guard(async () => {
-    const players = await api(`/servers/${id}/players`);
-    list.replaceChildren(
-      ...players.map((p) =>
-        h('div', { class: 'pitem' + (p.uuid === selected ? ' sel' : ''), onclick: () => ((selected = p.uuid), load(), showPlayer(p)) },
-          h('img', { src: headUrl(p.uuid), alt: '' }),
-          h('div', { style: 'flex:1;min-width:0' }, h('b', {}, p.name || 'Unbekannter Spieler'), !p.hasData && h('div', { class: 'muted', style: 'font-size:12px' }, 'keine Spielerdaten')),
-          p.online && h('span', { class: 'chip green' }, 'online'),
-          p.op && h('span', { class: 'chip orange' }, 'OP'),
-          p.banned && h('span', { class: 'chip red' }, 'gebannt')),
-      ),
-    );
-    if (!players.length) list.append(h('div', { class: 'pb muted' }, 'Noch keine Spieler bekannt.'));
+    playerRows = await api(`/servers/${id}/players`);
+    paintList();
   });
   const showPlayer = guard(async (p) => {
     detail.replaceChildren(h('p', { class: 'muted' }, 'Lade …'));
@@ -430,7 +446,7 @@ function playerView(p, d, hasApi, serverId, refresh) {
     h('div', { class: 'panel' },
     h('div', { class: 'phead' },
         h('img', { src: headUrl(p.uuid), alt: '' }),
-        h('div', {}, h('h2', { style: 'font-size:22px' }, p.name || 'Unbekannter Spieler'), h('div', { class: 'muted mono', style: 'font-size:12px' }, p.name ? '' : 'Name nicht verfügbar')),
+        h('div', {}, h('h2', {}, p.name || 'Spieler'), h('div', { class: 'muted player-subtitle' }, p.name ? 'Spielerprofil' : 'Name nicht verfügbar')),
         h('span', { class: 'sp' }),
         p.online && h('span', { class: 'chip green' }, 'Online'))),
   );
@@ -446,10 +462,10 @@ function playerView(p, d, hasApi, serverId, refresh) {
     });
     const foods = range(0, 10).map((i) => h('span', { class: 'food' + (food > i * 2 ? '' : ' off') }, ico('food', 18)));
     out.append(
-      h('div', { class: 'panel' },
+      h('div', { class: 'panel player-vitals' },
         h('div', { class: 'ph' }, 'Leben und Erfahrung'),
         h('div', { class: 'pb' },
-          h('div', { style: 'text-align:center;font-weight:700;margin-bottom:6px' }, `Level ${d.xpLevel}`),
+          h('div', { class: 'xp-level' }, `Level ${d.xpLevel}`),
           h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round(Math.max(0, Math.min(1, Number(d.xpProgress) || 0)) * 100)}%` })),
           h('div', { class: 'vitals' }, h('span', { class: 'vital-label' }, 'Leben'), hearts, h('b', { class: 'vital-value' }, `${hp}/20`), h('span', { class: 'sp' }),
             btn('Heilen', { icon: 'heart', kind: 'success', sm: true, title: 'Leben auffüllen', cls: 'vital-action', onclick: guard(async () => {
@@ -482,7 +498,7 @@ function playerView(p, d, hasApi, serverId, refresh) {
               ['Aktuelle Position', `${posStr(d.pos)}\n${dimName(d.dimension)}`],
               ['Respawn', d.spawn ? posStr(d.spawn) : '–'],
               ['Letzter Tod', d.lastDeath ? `${posStr(d.lastDeath.pos)}\n${dimName(d.lastDeath.dimension)}` : '–'],
-            ].map(([k, v]) => h('div', { class: 'tile', style: 'background:var(--panel-2);white-space:pre-line' }, h('small', {}, k), h('b', { style: 'font-size:14px' }, v)))),
+            ].map(([k, v]) => h('div', { class: 'tile player-info-tile' }, h('small', {}, k), h('b', {}, v)))),
           h('p', { class: 'muted', style: 'font-size:12px;margin:10px 0 0' }, `Spielerdaten gespeichert: ${fmtDate(d.updated)} (der Server schreibt sie beim Speichern/Ausloggen)`))),
       inventoryPanel(d),
     );
