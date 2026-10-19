@@ -48,13 +48,17 @@ const ICONS = {
   heart: 'M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.4-7 10-7 10z',
   food: 'M15 4a5 5 0 0 1 3.5 8.5L14 17l-7-7 4.5-4.5A5 5 0 0 1 15 4zM7 10l-3 3 2 2 3-3',
   chest: 'M3 7l9-4 9 4v12l-9 3-9-3zM3 7l9 4 9-4M12 11v11M7 9v4m10-4v4',
-  ender: 'M4 8l8-4 8 4v10l-8 3-8-3zM4 8l8 4 8-4M12 12v9M9 6l6 3M9 15l6 3',
+  ender: 'M4 8l8-4 8 4v10l-8 3-8-3zM4 8l8 4 8-4M12 12v9M7 7l2-2m6 1 2 2m-8 9 2-2m5 1 2 2',
   backpack: 'M6 8V6a6 6 0 0 1 12 0v2M5 8h14v13H5zM8 8v5h8V8M9 17h6',
   server: 'M4 4h16v6H4zM4 14h16v6H4zM7 7h.01M7 17h.01M11 7h6M11 17h6',
   players: 'M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M16 4.5a3.5 3.5 0 0 1 0 6.8M17 15h1a3 3 0 0 1 3 3v2',
   shield: 'M12 3l8 3v5c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6zM9 12l2 2 4-4',
   sliders: 'M4 6h9m4 0h3M4 12h3m4 0h9M4 18h9m4 0h3M13 4v4m-2 2v4m6 2v4',
   terminal: 'M4 5h16v14H4zM7 9l3 3-3 3m6 0h4',
+  package: 'M12 3 3.5 7.5 12 12l8.5-4.5L12 3zM3.5 7.5V17L12 21l8.5-4V7.5M12 12v9',
+  world: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18',
+  copy: 'M8 8V4h12v12h-4M4 8h12v12H4z',
+  bell: 'M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',
 };
 const FILLED = new Set(['play', 'stop', 'heart', 'food']);
 
@@ -155,6 +159,7 @@ const STATUS = {
   online: 'Online',
   offline: 'Offline',
   starting: 'Startet …',
+  stopping: 'Stoppt …',
   crashed: 'Abgestürzt',
   updating: 'Aktualisiert …',
   unknown: 'Dateizugriff',
@@ -313,23 +318,27 @@ async function viewList() {
 
 const TABS = [
   ['overview', 'Server', 'server'],
-  ['properties', 'Options', 'sliders'],
+  ['software', 'Software', 'package'],
+  ['files', 'Dateien', 'folder'],
+  ['worlds', 'Welten', 'world'],
+  ['players', 'Spieler', 'players'],
+  ['whitelist', 'Whitelist & Ops', 'shield'],
+  ['backups', 'Backups', 'cloud'],
+  ['properties', 'Optionen', 'sliders'],
   ['console', 'Konsole', 'terminal'],
   ['log', 'Log', 'file'],
-  ['players', 'Spieler', 'players'],
-  ['whitelist', 'Whitelist', 'shield'],
-  ['files', 'Dateien', 'folder'],
-  ['backups', 'Backups', 'cloud'],
 ];
-const PAGE_TITLES = { overview: 'Server', properties: 'Options', console: 'Konsole', log: 'Log', players: 'Spielerdetails', whitelist: 'Spielerlisten', files: 'Dateien', backups: 'Backups' };
+const PAGE_TITLES = { overview: 'Server', software: 'Software', properties: 'Optionen', console: 'Konsole', log: 'Log', players: 'Spielerdetails', whitelist: 'Spielerlisten', files: 'Dateien', worlds: 'Welten', backups: 'Backups' };
 
 async function viewServer(id, tab) {
   let info = await api(`/servers/${id}`);
   const hooks = {};
   const head = h('div', { class: 'page-head' });
   const paintHead = () => {
-    const actions = h('div', { class: 'server-head-actions' }, controls(id, info.status, info.api, false));
-    head.replaceChildren(h('h1', {}, PAGE_TITLES[tab] || 'Server'), statusEl(info.status), h('span', { class: 'sp' }), actions);
+    const extras = tab === 'overview'
+      ? []
+      : [statusEl(info.status), h('span', { class: 'sp' }), h('div', { class: 'server-head-actions' }, controls(id, info.status, info.api, false))];
+    head.replaceChildren(h('h1', {}, PAGE_TITLES[tab] || 'Server'), ...extras);
   };
   paintHead();
   const body = h('div');
@@ -354,35 +363,145 @@ async function viewServer(id, tab) {
       /* nächster Versuch */
     }
   }, 4000);
-  const view = { overview: tOverview, players: tPlayers, whitelist: tWhitelist, properties: tProperties, console: tConsole, log: tLog, files: tFiles, backups: tBackups }[tab] || tOverview;
+  const view = {
+    overview: tOverview,
+    software: tSoftware,
+    players: tPlayers,
+    whitelist: tWhitelist,
+    properties: tProperties,
+    console: tConsole,
+    log: tLog,
+    files: tFiles,
+    worlds: (serverId, serverInfo, container) => tFiles(serverId, serverInfo, container, serverInfo.level || 'world'),
+    backups: tBackups,
+  }[tab] || tOverview;
   await view(id, info, body, hooks);
 }
 
 /* --- Übersicht --- */
 
 async function tOverview(id, info, el, hooks) {
-  const tiles = h('div', { class: 'tiles' });
-  const paint = (i) =>
-    tiles.replaceChildren(
-      ...[
-        ['Status', STATUS[i.status], 'server'],
-        ['Spieler', i.api ? `${i.online}/${i.max || '–'}` : `Max. ${i.max || '–'}`, 'players'],
-        ['Version', i.version || '–', 'file'],
-        ['CPU', i.api ? `${i.cpu}%` : '–', 'sliders'],
-        ['RAM', i.mem || '–', 'server'],
-        ['Welt', i.level || 'world', 'folder'],
-        ['Port', i.port || '–', 'terminal'],
-      ].map(([k, v, iconName]) => h('div', { class: 'tile' }, h('div', { class: 'tile-label' }, ico(iconName, 17), h('small', {}, k)), h('b', {}, v))),
-    );
-  paint(info);
-  hooks.onInfo = paint;
+  let latest = info;
+  let pending = null;
+  let pendingTimer;
+  const address = h('code', { class: 'server-address-value' });
+  const copyAddress = btn('Adresse kopieren', { icon: 'copy', kind: 'ghost', cls: 'copy-address', onclick: guard(async () => {
+    if (!latest.address) return;
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(latest.address);
+    else {
+      const input = h('textarea', { class: 'clipboard-fallback', style: 'position:fixed;left:-9999px;top:0' });
+      input.value = latest.address;
+      document.body.append(input);
+      input.select();
+      try {
+        if (!document.execCommand('copy')) throw new Error('Kopieren wird von diesem Browser nicht unterstützt.');
+      } finally {
+        input.remove();
+      }
+    }
+    toast('Serveradresse kopiert');
+  }) });
+  const addressCard = h('section', { class: 'server-address-card' },
+    h('div', { class: 'server-address-copy' }, h('span', { class: 'eyebrow' }, 'SERVERADRESSE'), address), copyAddress);
+  const icon = h('div', { class: 'server-hero-icon', 'aria-hidden': 'true' }, ico('server', 42));
+  const serverStatus = h('div', { class: 'server-status-copy' });
+  const stats = h('div', { class: 'server-hero-stats' });
+  const actionArea = h('div', { class: 'server-hero-action' });
+  const progress = h('div', { class: 'start-progress', hidden: true },
+    h('div', { class: 'start-progress-track' }, h('i', {})), h('small', {}, 'Crafty startet die Serverinstanz …'));
+  const statusWidget = h('section', { class: 'server-status-widget' }, icon,
+    h('div', { class: 'server-hero-content' }, serverStatus, stats, progress), actionArea);
+  const detailGrid = h('div', { class: 'server-details-grid' });
+  const primary = h('div', { class: 'dashboard-primary' }, addressCard, statusWidget,
+    h('section', { class: 'panel server-details-panel' }, h('div', { class: 'ph' }, 'Serverdetails'), detailGrid));
+  const rail = h('aside', { class: 'dashboard-rail' });
+  const dashboard = h('div', { class: 'dashboard-layout' }, primary, rail);
 
-  el.append(tiles,
-    h('div', { class: 'panel server-summary-panel' },
-      h('div', { class: 'ph' }, 'Serverinformationen'),
-      h('div', { class: 'pb server-summary-grid' },
-        [['Software', info.type || 'Minecraft'], ['Spieler', info.api ? `${info.online}/${info.max || '–'}` : `Max. ${info.max || '–'}`], ['Version', info.version || '–'], ['Welt', info.level || 'world'], ['Anschluss', info.port || '–'], ['Status', STATUS[info.status] || 'Unbekannt']]
-          .map(([label, value]) => h('div', { class: 'server-summary-item' }, h('small', {}, label), h('b', {}, value))))));
+  const runAction = async (action) => {
+    pending = action === 'stop_server' ? 'stopping' : 'starting';
+    paint(latest);
+    try {
+      await send('POST', `/servers/${id}/action/${action}`);
+      toast(action === 'start_server' ? 'Start angefordert' : action === 'stop_server' ? 'Stop angefordert' : 'Neustart angefordert');
+      clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(async () => {
+        pending = null;
+        try { paint(await api(`/servers/${id}`)); } catch { paint(latest); }
+      }, 15000);
+    } catch (e) {
+      pending = null;
+      paint(latest);
+      toast(e.message, true);
+    }
+  };
+
+  const paint = (server) => {
+    latest = server;
+    const state = pending || server.status;
+    statusWidget.dataset.status = state;
+    serverStatus.replaceChildren(
+      h('div', { class: `server-state-badge state-${state}` }, h('i', {}), state === 'unknown' ? 'Status unbekannt' : STATUS[state] || 'Unbekannt'),
+      h('h2', {}, server.name),
+      h('p', {}, state === 'online' ? 'Dein Server ist bereit. Spieler können jetzt beitreten.' : state === 'starting' ? 'Die Serverinstanz wird gestartet. Das dauert normalerweise einen Moment.' : state === 'stopping' ? 'Die Serverinstanz wird heruntergefahren.' : state === 'unknown' ? 'Ohne Crafty-Verbindung kann der Live-Status nicht abgerufen werden.' : 'Der Server ist derzeit gestoppt.'),
+    );
+    stats.replaceChildren(...[
+      ['Software', [server.type, server.version].filter(Boolean).join(' · ') || 'Nicht erkannt', 'package'],
+      ['Spieler', server.api ? `${server.online}/${server.max || '–'}` : `–/${server.max || '–'}`, 'players'],
+      ['RAM', server.mem || '–', 'server'],
+    ].map(([label, value, iconName]) => h('div', { class: 'server-hero-stat' }, ico(iconName, 18), h('span', {}, h('small', {}, label), h('b', {}, value)))));
+    const actions = server.api
+      ? state === 'online'
+        ? [btn('Server stoppen', { icon: 'stop', kind: 'danger', cls: 'server-primary-action', onclick: () => runAction('stop_server') }), btn('Neustart', { icon: 'restart', kind: 'ghost', onclick: () => runAction('restart_server') })]
+        : [btn(state === 'starting' ? 'Wird gestartet …' : state === 'stopping' ? 'Wird gestoppt …' : 'Starten', { icon: 'play', kind: 'success', cls: 'server-primary-action', disabled: ['starting', 'stopping'].includes(state), onclick: () => runAction('start_server') })]
+      : [abtn('#/settings/connection', 'Crafty verbinden', { icon: 'up', kind: 'primary' })];
+    actionArea.replaceChildren(...actions);
+    progress.hidden = !['starting', 'stopping'].includes(state);
+    progress.lastElementChild.textContent = state === 'stopping' ? 'Crafty stoppt die Serverinstanz …' : 'Crafty startet die Serverinstanz …';
+    address.textContent = server.address || `Hostname nicht konfiguriert · Port ${server.port || '–'}`;
+    copyAddress.disabled = !server.address;
+    detailGrid.replaceChildren(...[
+      ['Version', server.version || 'Nicht erkannt', 'file'],
+      ['Welt', server.level || 'world', 'world'],
+      ['Port', server.port || '–', 'terminal'],
+      ['CPU', server.api ? `${server.cpu}%` : 'Crafty-Verbindung fehlt', 'sliders'],
+    ].map(([label, value, iconName]) => h('div', { class: 'server-detail-row' }, ico(iconName, 18), h('span', {}, h('small', {}, label), h('b', {}, value)))));
+    rail.replaceChildren(
+      h('section', { class: 'panel rail-panel' }, h('div', { class: 'ph' }, ico('bell', 18), 'Systemhinweise'),
+        h('div', { class: 'pb' },
+          h('div', { class: `notice-status ${server.api ? 'ok' : 'warn'}` }, h('i', {}), h('span', {}, server.api ? 'Crafty Controller verbunden' : 'Nur Dateizugriff aktiv')),
+          h('p', {}, server.api ? 'Start, Stopp und Live-Spieleraktionen stehen zur Verfügung.' : 'Verbinde die Crafty-API, um den Server aus dem Dashboard zu starten und Live-Aktionen auszuführen.'),
+          !server.api && abtn('#/settings/connection', 'Verbindung einrichten', { kind: 'ghost', sm: true }))),
+      h('section', { class: 'panel rail-panel' }, h('div', { class: 'ph' }, ico('cloud', 18), 'Backups'),
+        h('div', { class: 'pb' },
+          h('div', { class: `notice-status ${S.cfg.backup?.enabled ? 'ok' : 'warn'}` }, h('i', {}), h('span', {}, S.cfg.backup?.enabled ? 'Automatisch aktiviert' : 'Automatisch deaktiviert')),
+          h('p', {}, S.cfg.backup?.enabled ? `Geplanter Lauf täglich um ${S.cfg.backup.time || '03:00'}.` : 'Lege einen globalen Zeitplan in den Backup-Einstellungen fest.'),
+          abtn(`#/s/${id}/backups`, 'Backup-Einstellungen', { kind: 'ghost', sm: true }))),
+      h('div', { class: 'dashboard-tip' }, h('b', {}, 'Tipp'), h('p', {}, 'Serveradresse und Verbindungsdetails findest du in den Crafty-Servereinstellungen.')),
+    );
+  };
+  paint(info);
+  hooks.onInfo = (server) => {
+    if (pending === 'starting' && server.status === 'online' || pending === 'stopping' && server.status === 'offline') pending = null;
+    else if (pending === 'starting' && server.status === 'offline' || pending === 'stopping' && server.status === 'online') return;
+    paint(server);
+  };
+  el.replaceChildren(dashboard);
+}
+
+async function tSoftware(id, info, el) {
+  const update = guard(async () => {
+    if (!confirm('Crafty soll diese Serverinstanz über die in Crafty hinterlegte Update-URL aktualisieren und vorher ein Backup erstellen. Fortfahren?')) return;
+    await send('POST', `/servers/${id}/action/update_executable`);
+    toast('Crafty-Update gestartet');
+  });
+  el.append(
+    h('section', { class: 'software-hero panel' },
+      h('div', { class: 'software-icon' }, ico('package', 34)),
+      h('div', {}, h('span', { class: 'eyebrow' }, 'AKTUELLE SERVER-SOFTWARE'), h('h2', {}, info.type || 'Minecraft-Server'), h('p', {}, `Version ${info.version || 'unbekannt'} · ${STATUS[info.status] || 'Status unbekannt'}`)),
+      h('span', { class: 'sp' }),
+      btn('Mit Crafty aktualisieren', { icon: 'download', kind: 'primary', disabled: !info.api, onclick: update })),
+    h('div', { class: 'notice info' }, info.api ? 'Das Update wird durch Crafty Controller ausgeführt. Crafty verwendet dafür die für diese Instanz konfigurierte Update-Quelle.' : 'Verbinde zuerst die Crafty-API, damit Crafty diese Serverinstanz aktualisieren kann.'),
+  );
 }
 
 async function tConsole(id, info, el) {
@@ -502,7 +621,10 @@ function playerView(p, d, hasApi, serverId, refresh, serverRunning) {
     const foods = range(0, 10).map((i) => h('span', { class: 'food' + (food > i * 2 ? '' : ' off') }, ico('food', 20)));
     const needsOnline = serverRunning && !p.online;
     const action = (key, label, icon, kind, extra = {}) => btn(label, {
-      icon, kind, cls: 'player-control-action', disabled: extra.disabled || needsOnline,
+      // Let the action reach the server so the user receives the precise
+      // reason when Crafty's player list is stale; the backend still protects
+      // live player data while the server is running.
+      icon, kind, cls: 'player-control-action', disabled: extra.disabled,
       onclick: guard(async () => {
         const result = await send('POST', `/servers/${serverId}/players/${p.uuid}/action`, { action: key });
         if (result.mode === 'online' && (key === 'heal' || key === 'feed')) {
@@ -552,7 +674,7 @@ function playerView(p, d, hasApi, serverId, refresh, serverRunning) {
               setTimeout(refresh, 350);
             }) })),
             needsOnline
-              ? h('p', { class: 'player-action-note' }, 'Zum Ändern muss der Spieler online sein. Für Offline-Spielerdaten stoppe zuerst den Server.')
+              ? h('p', { class: 'player-action-note' }, 'Der Spieler ist laut Crafty nicht online. Heilen und Sättigen benötigen einen verbundenen Spieler; gespeicherte Offline-Daten lassen sich bei gestopptem Server ändern.')
               : !hasApi && h('p', { class: 'player-action-note' }, 'Ohne Crafty-API werden Änderungen direkt in den gespeicherten Spielerdaten abgelegt.'))),
         h('section', { class: 'panel player-control' },
           h('div', { class: 'ph' }, ico('sliders', 19), 'Spielerkontrolle'),
@@ -739,8 +861,8 @@ async function tProperties(id, info, el) {
 
 /* --- Dateien --- */
 
-async function tFiles(id, info, el) {
-  let cwd = '';
+async function tFiles(id, info, el, initialPath = '') {
+  let cwd = initialPath;
   const body = h('div');
   const crumbs = h('div', { class: 'crumbs' });
   const q = encodeURIComponent;
@@ -773,7 +895,7 @@ async function tFiles(id, info, el) {
     const segs = cwd ? cwd.split('/') : [];
     crumbs.replaceChildren(
       h('a', { onclick: () => ((cwd = ''), load()) }, 'Server'),
-      ...segs.map((s, i) => [h('span', { class: 'muted' }, '/'), h('a', { onclick: () => ((cwd = segs.slice(0, i + 1).join('/')), load()) }, s)]),
+      ...segs.flatMap((s, i) => [h('span', { class: 'muted' }, '/'), h('a', { onclick: () => ((cwd = segs.slice(0, i + 1).join('/')), load()) }, s)]),
     );
     body.replaceChildren(
       h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', { class: 'r' }, 'Größe'), h('th', {}, 'Geändert'), h('th', {}))),

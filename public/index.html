@@ -17,11 +17,19 @@
           </svg>
           <span>Craftynos</span>
         </a>
-        <nav id="nav">
-          <a href="#/" data-k="servers">Server</a>
-          <a href="#/settings" data-k="settings">Einstellungen</a>
+        <nav id="nav" aria-label="Hauptnavigation">
+          <a href="#/" data-k="servers">Servers</a>
+          <a href="#/settings/connection" data-k="settings">Support</a>
         </nav>
-        <a id="conn" class="conn" href="#/settings/connection"></a>
+        <div class="top-actions">
+          <a class="top-notifications" href="#/settings/connection" aria-label="Systemhinweise" title="Systemhinweise">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+          </a>
+          <a class="top-profile" href="#/settings/connection" aria-label="Verbindungseinstellungen" title="Verbindungseinstellungen">
+            <span class="top-avatar">C</span><span class="top-profile-name">Crafty</span>
+          </a>
+          <a id="conn" class="conn" href="#/settings/connection"></a>
+        </div>
       </div>
     </header>
     <main id="app"></main>

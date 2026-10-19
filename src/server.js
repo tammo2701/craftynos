@@ -224,11 +224,15 @@ app.get(
     const { server, dir } = await ctx(req.params.id);
     const props = await propsOf(dir);
     const st = await stateOf(server.server_id).catch(() => unknownStats());
+    const port = st.port || server.server_port || Number(prop(props, 'server-port', 0)) || null;
+    const rawHost = plainText(server.hostname || server.server_ip || server.host || server.ip);
+    const host = rawHost && !['0.0.0.0', '::', '*', 'localhost'].includes(rawHost.toLowerCase()) ? rawHost : '';
     res.json({
       id: server.server_id,
       name: plainText(server.server_name, server.server_id || 'Unbenannter Server'),
       type: server.type,
       path: server.path,
+      address: host ? (host.includes(':') || !port ? host : `${host}:${port}`) : '',
       level: prop(props, 'level-name', 'world'),
       onlineMode: prop(props, 'online-mode', 'true') === 'true',
       whitelistEnabled: prop(props, 'white-list', 'false') === 'true',
