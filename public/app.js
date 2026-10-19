@@ -1,6 +1,7 @@
 /* Craftynos – Frontend (ohne Build-Schritt) */
 
-const S = { cfg: null, timers: [] };
+class StaleError extends Error {}
+const S = { cfg: null, timers: [], rid: 0, ac: null };
 const $app = document.getElementById('app');
 const $conn = document.getElementById('conn');
 
@@ -72,9 +73,13 @@ function abtn(href, label, { icon, kind = 'ghost', sm, title } = {}) {
 }
 
 async function api(path, opts = {}) {
-  const r = await fetch('/api' + path, opts);
+  const rid = S.rid;
+  const r = await fetch('/api' + path, { ...opts, signal: S.ac?.signal }).catch((e) => {
+    throw e.name === 'AbortError' ? new StaleError() : e;
+  });
   const ct = r.headers.get('content-type') || '';
   const body = ct.includes('json') ? await r.json().catch(() => ({})) : await r.text();
+  if (rid !== S.rid) throw new StaleError();
   if (!r.ok) throw new Error((body && body.error) || (typeof body === 'string' && body) || r.statusText);
   return body;
 }
@@ -90,10 +95,10 @@ const guard = (fn) => async (...a) => {
   try {
     return await fn(...a);
   } catch (e) {
-    toast(e.message, true);
+    if (!(e instanceof StaleError)) toast(e.message, true);
   }
 };
-window.addEventListener('unhandledrejection', (e) => toast(String(e.reason?.message || e.reason), true));
+window.addEventListener('unhandledrejection', (e) => !(e.reason instanceof StaleError) && toast(String(e.reason?.message || e.reason), true));
 
 function modal(title, body, footer = []) {
   const close = () => bg.remove();
@@ -161,8 +166,8 @@ function icon(name) {
 
 /* ---------- Konfiguration & Kopfleiste ---------- */
 
-async function loadConfig() {
-  S.cfg = await api('/config');
+async function loadConfig(refresh = false) {
+  S.cfg = await api('/config' + (refresh ? '?refresh=1' : ''));
   const { mode, api: a } = S.cfg;
   let cls = 'bad';
   let text = 'Keine Server gefunden';
@@ -180,14 +185,19 @@ function updateNav(key) {
 
 async function route() {
   clearTimers();
+  S.rid++;
+  S.ac?.abort();
+  S.ac = new AbortController();
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
   updateNav(parts[0] === 'settings' ? 'settings' : 'servers');
   try {
-    await loadConfig();
+    if (!S.cfg) await loadConfig();
+    else loadConfig().catch(() => {});
     if (parts[0] === 'settings') await viewSettings(parts[1] || 'connection');
     else if (parts[0] === 's' && parts[1]) await viewServer(parts[1], parts[2] || 'overview');
     else await viewList();
   } catch (e) {
+    if (e instanceof StaleError) return;
     $app.replaceChildren(h('div', { class: 'page-head' }, h('h1', {}, 'Fehler')), h('div', { class: 'empty' }, h('p', {}, e.message)));
   }
 }
@@ -731,6 +741,7 @@ const field = (label, input, hint) => h('div', { class: 'field' }, h('label', {}
 const stateRow = (label, ok, text) => h('div', { class: 'state-row' }, h('span', { class: 'lbl' }, label), h('span', { class: `chip ${ok === true ? 'green' : ok === false ? 'red' : ''}` }, text));
 
 async function sConnection(el) {
+  await loadConfig(true);
   const a = S.cfg.api;
   const v = S.cfg.volumes;
   const SRC = { ui: 'aus den Einstellungen', env: 'aus der Compose (CRAFTY_URL)', default: 'Standardwert' };
@@ -741,7 +752,10 @@ async function sConnection(el) {
   const test = guard(async () => {
     result.replaceChildren(h('div', { class: 'progress' }, h('span', { class: 'spinner' }), 'Teste Verbindung …'));
     const r = await send('POST', '/settings/crafty/test', { url: urlIn.value, token: tokIn.value });
-    result.replaceChildren(h('div', { class: 'result ' + (r.ok ? 'ok' : 'err') }, r.ok ? `Verbunden mit ${r.url} – ${r.serverCount} Server gefunden.` : r.error));
+    result.replaceChildren(
+      h('div', { class: 'result ' + (r.ok ? 'ok' : 'err') }, r.ok ? `Verbunden mit ${r.url} – ${r.serverCount} Server gefunden.` : r.error),
+      h('div', { class: 'steps' }, (r.steps || []).map((s) => h('div', { class: 'step ' + (s.ok ? 'ok' : 'err') }, ico(s.ok ? 'check' : 'x', 14), h('b', {}, s.name), h('span', {}, s.detail)))),
+    );
   });
   const save = guard(async () => {
     await send('PUT', '/settings/crafty', { url: urlIn.value, token: tokIn.value });
@@ -759,7 +773,7 @@ async function sConnection(el) {
       section('Dateizugriff (Volumes)', 'Pflicht. Darüber liest und bearbeitet Craftynos Server, Spieler, Whitelist, Properties, Dateien und Backups.',
         stateRow(`${v.root}/servers`, v.serversDirOk, v.serversDirOk ? 'gemountet' : 'nicht gefunden'),
         stateRow(`${v.root}/backups`, v.backupsDirOk, v.backupsDirOk ? 'gemountet' : 'nicht gefunden'),
-        stateRow('Crafty-Datenbank (Servernamen)', v.db ? (v.dbError ? false : true) : null, v.db ? (v.dbError ? 'nicht lesbar' : 'gefunden') : 'optional – /crafty/app/config mounten'),
+        stateRow('Crafty-Datenbank (Servernamen)', v.db ? !v.dbError : false, v.db ? (v.dbError ? 'nicht lesbar' : 'gefunden') : '/crafty/app/config mounten'),
         stateRow('Gefundene Server', v.serverCount > 0, String(v.serverCount))),
       section('Crafty-API (optional)', 'Zusätzlich für Start, Stop, Neustart, Konsole und Live-Status. Eingaben hier haben Vorrang vor den Compose-Variablen.',
         field('Crafty-URL', urlIn, `Aktuell wirksam: ${a.url} (${SRC[a.urlSource]})`),

@@ -1,9 +1,11 @@
 import { Agent, fetch } from 'undici';
 import { craftyCfg } from './config.js';
+import dns from 'node:dns/promises';
+import net from 'node:net';
 
 const agents = {};
 const agent = (insecure) =>
-  (agents[insecure] ??= new Agent({ connect: { rejectUnauthorized: !insecure } }));
+  (agents[insecure] ??= new Agent({ connect: { rejectUnauthorized: !insecure, timeout: 6000, autoSelectFamily: true, autoSelectFamilyAttemptTimeout: 800 } }));
 
 export class CraftyError extends Error {
   constructor(message, status = 502) {
@@ -59,8 +61,8 @@ async function call(method, p, { body, text = false, timeout = 15000, auth = tru
 }
 
 export const crafty = {
-  servers: () => call('GET', '/api/v2/servers'),
-  stats: (id) => call('GET', `/api/v2/servers/${id}/stats`),
+  servers: () => call('GET', '/api/v2/servers', { timeout: 7000 }),
+  stats: (id) => call('GET', `/api/v2/servers/${id}/stats`, { timeout: 7000 }),
   action: (id, action) => call('POST', `/api/v2/servers/${id}/action/${action}`),
   stdin: (id, command) =>
     call('POST', `/api/v2/servers/${id}/stdin`, {
@@ -74,6 +76,65 @@ export const crafty = {
 export async function testConnection(cfg) {
   const r = await call('GET', '/api/v2/servers', { cfg, timeout: 8000 });
   return { serverCount: Array.isArray(r.data) ? r.data.length : 0 };
+}
+
+function tcpProbe(host, port, ms = 4000) {
+  return new Promise((resolve) => {
+    const s = net.connect({ host, port, timeout: ms });
+    s.once('connect', () => (s.destroy(), resolve({ ok: true })));
+    s.once('timeout', () => (s.destroy(), resolve({ ok: false, error: 'Zeitüberschreitung' })));
+    s.once('error', (e) => resolve({ ok: false, error: e.code || e.message }));
+  });
+}
+
+/** Prüft Schritt für Schritt: DNS → Port → TLS/API-Anmeldung, damit klar ist, woran es scheitert. */
+export async function diagnose(cfg) {
+  const steps = [];
+  let u;
+  try {
+    u = new URL(cfg.url);
+  } catch {
+    return { ok: false, steps, error: 'Ungültige URL' };
+  }
+  const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
+  let addrs;
+  if (net.isIP(u.hostname)) addrs = [{ address: u.hostname }];
+  else {
+    try {
+      addrs = await dns.lookup(u.hostname, { all: true });
+      steps.push({ name: 'Hostname auflösen', ok: true, detail: `${u.hostname} → ${addrs.map((a) => a.address).join(', ')}` });
+    } catch (e) {
+      steps.push({ name: 'Hostname auflösen', ok: false, detail: `${u.hostname}: ${e.code || e.message}` });
+      return {
+        ok: false,
+        steps,
+        error: `Der Hostname „${u.hostname}“ ist im Container nicht auflösbar. Craftynos muss im selben Docker-Netzwerk wie Crafty laufen, sonst die IP-Adresse des Hosts verwenden.`,
+      };
+    }
+  }
+  const probes = [];
+  for (const a of addrs) probes.push({ addr: a.address, r: await tcpProbe(a.address, port) });
+  const open = probes.some((p) => p.r.ok);
+  steps.push({
+    name: `Port ${port} erreichbar`,
+    ok: open,
+    detail: probes.map((p) => `${p.addr}: ${p.r.ok ? 'offen' : p.r.error}`).join(', '),
+  });
+  if (!open)
+    return {
+      ok: false,
+      steps,
+      error: `Port ${port} ist von Craftynos aus nicht erreichbar. Mögliche Ursachen: falscher Port oder falsche IP, eine Firewall (z. B. ufw blockiert oft Container → Host-IP) oder Crafty läuft in einem anderen Docker-Netzwerk. Tipp: den Service-Namen verwenden (https://crafty:8443) oder https://host.docker.internal:${port}.`,
+    };
+  if (!cfg.token) return { ok: false, steps, error: 'Kein API-Token angegeben.' };
+  try {
+    const r = await testConnection(cfg);
+    steps.push({ name: 'API-Anmeldung (TLS + Token)', ok: true, detail: `${r.serverCount} Server gefunden` });
+    return { ok: true, steps, serverCount: r.serverCount };
+  } catch (e) {
+    steps.push({ name: 'API-Anmeldung (TLS + Token)', ok: false, detail: e.message });
+    return { ok: false, steps, error: e.message };
+  }
 }
 
 export function parsePlayers(v) {

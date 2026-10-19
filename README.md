@@ -57,6 +57,8 @@ services:
     # Neu: Craftynos
     craftynos:
         container_name: craftynos
+        extra_hosts:
+            - "host.docker.internal:host-gateway"   # Fallback, falls Crafty nur über die Host-IP erreichbar ist
         image: ghcr.io/tammo2701/craftynos:latest
         restart: always
         depends_on:
@@ -76,7 +78,7 @@ services:
             - /srv/docker/crafty-4/backups:/crafty/backups
             - /srv/docker/crafty-4/logs:/crafty/logs
             - /srv/docker/crafty-4/servers:/crafty/servers
-            # Optional, empfohlen: Crafty-Datenbank (nur lesend) für die echten Servernamen
+            # Crafty-Datenbank (nur lesend) für die echten Servernamen – gehört zur Standard-Einrichtung
             - /srv/docker/crafty-4/config:/crafty/app/config
             # Eigene Einstellungen (Backup-Ziele, Format)
             - /srv/docker/craftynos:/data
@@ -107,6 +109,14 @@ CRAFTY_ROOT=/pfad/zu/crafty-ordner npm run dev
 ```
 
 Das Image wird per GitHub Action (`.github/workflows/docker.yml`) nach `ghcr.io/tammo2701/craftynos` gebaut (amd64 + arm64).
+
+## Verbindung zur Crafty-API schlägt fehl
+
+Unter *Einstellungen → Verbindung* prüft „Verbindung testen“ schrittweise: Hostname auflösen → Port erreichbar → TLS/Token. Das selbstsignierte Zertifikat von Crafty wird standardmäßig akzeptiert (`CRAFTY_INSECURE_TLS=true`); häufige Ursachen sind daher andere:
+
+- `UND_ERR_CONNECT_TIMEOUT` / „Port nicht erreichbar“: falsche IP oder falscher Port, eine Firewall (ufw blockiert oft Container → Host-IP) oder Crafty läuft in einem anderen Docker-Netzwerk. In derselben Compose reicht `https://crafty:8443` (Service-Name); alternativ `https://host.docker.internal:8443`.
+- „Hostname nicht auflösbar“: Craftynos und Crafty sind nicht im selben Docker-Netzwerk.
+- „Token ungültig“: neuen API-Schlüssel in Crafty erzeugen.
 
 ## Hinweise
 

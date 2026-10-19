@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { env, settings, craftyCfg, normalizeUrl, DEFAULT_BACKUP } from './config.js';
-import { crafty, normalizeStats, unknownStats, testConnection } from './crafty.js';
+import { crafty, normalizeStats, unknownStats, testConnection, diagnose } from './crafty.js';
 import { HttpError, mapPath, safeJoin, listDir, walk, readJson, exists } from './files.js';
 import { parseProps, applyProps } from './props.js';
 import { knownPlayers, playerDetail, resolveUuid } from './players.js';
@@ -29,8 +29,8 @@ const h = (fn) => (req, res) =>
 
 let cache = { t: 0, v: null };
 
-async function loadServers(force = false) {
-  if (!force && cache.v && Date.now() - cache.t < 8000) return cache.v;
+async function loadServersUncached() {
+  // (Cache und Parallelabfragen werden in loadServers() geregelt)
   let apiList = null;
   let apiError = null;
   if (craftyCfg().token) {
@@ -53,6 +53,14 @@ async function loadServers(force = false) {
   });
   cache = { t: Date.now(), v: { list, api: apiList !== null, apiError, serverCount: list.length } };
   return cache.v;
+}
+// Ist die API nicht erreichbar, wird das Ergebnis 20 s gemerkt, damit nicht jede Anfrage in einen Timeout läuft.
+let inflight = null;
+async function loadServers(force = false) {
+  const ttl = cache.v?.api ? 6000 : 20000;
+  if (!force && cache.v && Date.now() - cache.t < ttl) return cache.v;
+  inflight ??= loadServersUncached().finally(() => (inflight = null));
+  return !force && cache.v ? cache.v : inflight; // veraltete Daten sofort liefern, im Hintergrund erneuern
 }
 setServerProvider(async () => (await loadServers()).list);
 
@@ -92,7 +100,7 @@ app.get(
   '/api/config',
   h(async (_req, res) => {
     const cfg = craftyCfg();
-    const r = await loadServers(true);
+    const r = await loadServers(_req.query.refresh === '1');
     const vol = await volumeInfo();
     res.json({
       mode: r.api ? 'api' : r.serverCount ? 'volumes' : 'none',
@@ -136,7 +144,7 @@ app.post(
     const { url, token } = req.body || {};
     const cfg = { ...base, url: normalizeUrl(url) || base.url, token: (token && String(token).trim()) || base.token };
     try {
-      res.json({ ok: true, url: cfg.url, ...(await testConnection(cfg)) });
+      res.json({ url: cfg.url, ...(await diagnose(cfg)) });
     } catch (e) {
       res.json({ ok: false, url: cfg.url, error: e.message });
     }
@@ -157,7 +165,7 @@ app.put('/api/settings/backup', (req, res) => {
 app.get(
   '/api/servers',
   h(async (_req, res) => {
-    const { list, api } = await loadServers(true);
+    const { list, api } = await loadServers();
     const out = await Promise.all(
       list.map(async (s) => {
         const props = s._dir ? await propsOf(s._dir) : [];
@@ -567,6 +575,7 @@ const pub = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'publi
 app.use(express.static(pub));
 
 app.listen(env.port, () => {
+  loadServers().catch(() => {}); // Cache vorwärmen
   const c = craftyCfg();
   console.log(`Craftynos läuft auf Port ${env.port} (Crafty-API: ${c.token ? c.url : 'kein Token – nur Volumes'})`);
 });

@@ -28,6 +28,8 @@ services:
         restart: always
         depends_on:
             - crafty
+        extra_hosts:
+            - "host.docker.internal:host-gateway"   # Fallback, falls Crafty nur über die Host-IP erreichbar ist
 
         environment:
             TZ: Europe/Berlin
@@ -44,7 +46,7 @@ services:
             - /srv/docker/crafty-4/backups:/crafty/backups
             - /srv/docker/crafty-4/logs:/crafty/logs
             - /srv/docker/crafty-4/servers:/crafty/servers
-            # Optional, aber empfohlen: Crafty-Datenbank (wird nur gelesen) für die echten Servernamen
+            # Crafty-Datenbank (wird nur gelesen): liefert die echten Servernamen
             - /srv/docker/crafty-4/config:/crafty/app/config
             # Eigene Einstellungen von Craftynos (Backup-Ziele, Format)
             - /srv/docker/craftynos:/data
