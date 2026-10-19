@@ -58,6 +58,7 @@ const ICONS = {
   package: 'M12 3 3.5 7.5 12 12l8.5-4.5L12 3zM3.5 7.5V17L12 21l8.5-4V7.5M12 12v9',
   world: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18',
   copy: 'M8 8V4h12v12h-4M4 8h12v12H4z',
+  clipboard: 'M9 5H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3M9 3h6v4H9zM8 12h8M8 16h8',
   bell: 'M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',
 };
 const FILLED = new Set(['play', 'stop', 'heart', 'food']);
@@ -385,12 +386,12 @@ async function tOverview(id, info, el, hooks) {
   let pending = null;
   let pendingTimer;
   const address = h('code', { class: 'server-address-value' });
-  const copyAddress = btn('Adresse kopieren', { icon: 'copy', kind: 'ghost', cls: 'copy-address', onclick: guard(async () => {
-    if (!latest.address) return;
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(latest.address);
+  const copyAddress = btn('IP kopieren', { icon: 'clipboard', kind: 'ghost', cls: 'copy-address', onclick: guard(async () => {
+    const copyText = latest.address || `Hostname nicht konfiguriert · Port ${latest.port || '–'}`;
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(copyText);
     else {
       const input = h('textarea', { class: 'clipboard-fallback', style: 'position:fixed;left:-9999px;top:0' });
-      input.value = latest.address;
+      input.value = copyText;
       document.body.append(input);
       input.select();
       try {
@@ -399,7 +400,7 @@ async function tOverview(id, info, el, hooks) {
         input.remove();
       }
     }
-    toast('Serveradresse kopiert');
+    toast(latest.address ? 'Serveradresse kopiert' : 'Serverangabe kopiert · Hostname in Crafty konfigurieren');
   }) });
   const addressCard = h('section', { class: 'server-address-card' },
     h('div', { class: 'server-address-copy' }, h('span', { class: 'eyebrow' }, 'SERVERADRESSE'), address), copyAddress);
@@ -441,8 +442,8 @@ async function tOverview(id, info, el, hooks) {
     const state = pending || server.status;
     statusWidget.dataset.status = state;
     serverStatus.replaceChildren(
-      h('div', { class: `server-state-badge state-${state}` }, h('i', {}), state === 'unknown' ? 'Status unbekannt' : STATUS[state] || 'Unbekannt'),
       h('h2', {}, server.name),
+      h('div', { class: `server-state-badge state-${state}` }, h('i', {}), state === 'unknown' ? 'Status unbekannt' : STATUS[state] || 'Unbekannt'),
       h('p', {}, state === 'online' ? 'Dein Server ist bereit. Spieler können jetzt beitreten.' : state === 'starting' ? 'Die Serverinstanz wird gestartet. Das dauert normalerweise einen Moment.' : state === 'stopping' ? 'Die Serverinstanz wird heruntergefahren.' : state === 'unknown' ? 'Ohne Crafty-Verbindung kann der Live-Status nicht abgerufen werden.' : 'Der Server ist derzeit gestoppt.'),
     );
     stats.replaceChildren(...[
@@ -453,13 +454,13 @@ async function tOverview(id, info, el, hooks) {
     const actions = server.api
       ? state === 'online'
         ? [btn('Server stoppen', { icon: 'stop', kind: 'danger', cls: 'server-primary-action server-stop-action', onclick: () => runAction('stop_server') }), btn('Neustart', { icon: 'restart', kind: 'ghost', onclick: () => runAction('restart_server') })]
-        : [btn(state === 'starting' ? 'Wird gestartet …' : state === 'stopping' ? 'Wird gestoppt …' : 'Starten', { icon: 'play', kind: 'success', cls: 'server-primary-action', disabled: ['starting', 'stopping'].includes(state), onclick: () => runAction('start_server') })]
+        : [btn(state === 'starting' ? 'Wird gestartet …' : state === 'stopping' ? 'Wird gestoppt …' : 'Start', { icon: 'play', kind: 'success', cls: 'server-primary-action', disabled: ['starting', 'stopping'].includes(state), onclick: () => runAction('start_server') })]
       : [abtn('#/settings/connection', 'Crafty verbinden', { icon: 'up', kind: 'primary' })];
     actionArea.replaceChildren(...actions);
     progress.hidden = !['starting', 'stopping'].includes(state);
     progress.lastElementChild.textContent = state === 'stopping' ? 'Crafty stoppt die Serverinstanz …' : 'Crafty startet die Serverinstanz …';
     address.textContent = server.address || `Hostname nicht konfiguriert · Port ${server.port || '–'}`;
-    copyAddress.disabled = !server.address;
+    copyAddress.disabled = false;
     detailGrid.replaceChildren(...[
       ['Version', server.version || 'Nicht erkannt', 'file'],
       ['Welt', server.level || 'world', 'world'],
