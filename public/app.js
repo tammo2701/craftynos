@@ -277,10 +277,14 @@ function controls(id, st, hasApi, sm) {
 }
 
 async function viewList() {
-  const wrap = h('div');
+  const wrap = h('div', { class: 'server-list-content' });
+  const banner = h('div', { class: 'server-list-banner' },
+    h('div', { class: 'server-list-banner-copy' }, ico('server', 22),
+      h('span', {}, h('b', {}, 'Crafty Controller'), h('small', {}, 'Server, Status und Backups an einem Ort verwalten.'))),
+    abtn('#/settings/connection', 'Verbindung prüfen', { icon: 'sliders', kind: 'ghost' }));
   $app.replaceChildren(
-    h('div', { class: 'page-head' }, h('h1', {}, 'Deine Server')),
-    h('p', { class: 'page-intro' }, 'Verwalte deine Minecraft-Server und behalte ihren Status im Blick.'),
+    h('div', { class: 'page-head server-list-heading' }, h('h1', {}, 'Deine Server')),
+    h('p', { class: 'page-intro server-list-intro' }, 'Verwalte deine Minecraft-Server und behalte ihren Status im Blick.'),
     wrap,
   );
   const load = async () => {
@@ -288,10 +292,10 @@ async function viewList() {
       const list = await api('/servers');
       if (!list.length) {
         wrap.replaceChildren(
-          h('div', { class: 'empty' }, h('h2', {}, 'Keine Server gefunden'),
+          banner,
+          h('div', { class: 'empty server-list-empty' }, h('h2', {}, 'Keine Server gefunden'),
             h('p', {}, 'Craftynos liest Server aus dem gemounteten Ordner ', h('code', {}, '/crafty/servers'), ' oder über die Crafty-API.'),
-            h('p', {}, 'Prüfe, ob die Volumes in der Compose gesetzt sind, und richte bei Bedarf die API ein.'),
-            h('p', {}, abtn('#/settings/connection', 'Verbindung prüfen', { kind: 'primary' }))),
+            h('p', {}, 'Prüfe, ob die Crafty-Volumes eingebunden sind und der Serverordner erreichbar ist.')),
         );
         return;
       }
@@ -299,6 +303,7 @@ async function viewList() {
       const note = S.cfg.mode === 'volumes' && a.configured && a.error ? h('div', { class: 'page-note' }, `Crafty-API nicht erreichbar: ${a.error} `, h('a', { href: '#/settings/connection' }, 'Einstellungen')) : undefined;
       wrap.replaceChildren(
         ...(note ? [note] : []),
+        banner,
         h('div', { class: 'grid' },
           list.map((s) =>
             h('div', { class: `scard s-${s.status}`, onclick: () => (location.hash = `#/s/${s.id}`) },
@@ -321,15 +326,15 @@ async function viewList() {
 
 const TABS = [
   ['overview', 'Server', 'server'],
-  ['software', 'Software', 'package'],
-  ['files', 'Dateien', 'folder'],
-  ['worlds', 'Welten', 'world'],
-  ['players', 'Spieler', 'players'],
-  ['whitelist', 'Whitelist & Ops', 'shield'],
-  ['backups', 'Backups', 'cloud'],
   ['properties', 'Optionen', 'sliders'],
   ['console', 'Konsole', 'terminal'],
   ['log', 'Log', 'file'],
+  ['players', 'Spieler', 'players'],
+  ['whitelist', 'Whitelist & Ops', 'shield'],
+  ['software', 'Software', 'package'],
+  ['files', 'Dateien', 'folder'],
+  ['worlds', 'Welten', 'world'],
+  ['backups', 'Backups', 'cloud'],
 ];
 const PAGE_TITLES = { overview: 'Server', software: 'Software', properties: 'Optionen', console: 'Konsole', log: 'Log', players: 'Spielerdetails', whitelist: 'Spielerlisten', files: 'Dateien', worlds: 'Welten', backups: 'Backups' };
 
@@ -374,7 +379,7 @@ async function viewServer(id, tab) {
     properties: tProperties,
     console: tConsole,
     log: tLog,
-    files: tFiles,
+    files: (serverId, serverInfo, container) => tFiles(serverId, serverInfo, container),
     worlds: (serverId, serverInfo, container) => tFiles(serverId, serverInfo, container, serverInfo.level || 'world'),
     backups: tBackups,
   }[tab] || tOverview;

@@ -709,3 +709,145 @@ table{min-width:590px}.panel:has(table) .pb{overflow-x:auto}
   .player-vitals .vital-label,.player-vitals .vital-value{font-size:9px}
   .player-vitals .player-control-action{padding:0 5px;font-size:10px}
 }
+
+/* Aternos-style visual system across the complete Crafty dashboard */
+:root{
+  --nav:#2d3b44;--nav-deep:#25323a;--nav-hover:#3a4b54;
+  --panel:#2d3b44;--panel-deep:#25323a;--canvas:#f0f1f2;
+  --blue:#328dca;--blue-hover:#2479b4;--green:#17cc88;--green-hover:#10b678;
+  --red:#f3264f;--orange:#ef8057;--line:#d5dadd;--ink:#303b42;
+}
+
+html,body{background:var(--canvas)}
+.top,.top-in{height:96px}
+.top-in{padding-inline:clamp(14px,2vw,28px);gap:22px}
+.brand{font-size:28px;letter-spacing:-.035em}
+.brand svg{width:44px;height:44px}
+#nav{gap:5px}
+#nav a{min-width:77px;min-height:62px}
+#app{min-height:calc(100vh - 96px)}
+
+/* The server list uses Aternos' centered title, blue notice and dark server tiles. */
+.server-list-heading{min-height:58px;margin:12px 0 4px;justify-content:center;text-align:center}
+.server-list-heading h1{font-size:clamp(28px,3vw,38px)}
+.server-list-intro{margin:0 auto 20px;text-align:center}
+.server-list-content{width:100%;max-width:1040px;margin:0 auto}
+.server-list-banner{max-width:960px;min-height:66px;margin:0 auto 24px;padding:12px 14px;display:flex;align-items:center;gap:14px;color:#fff;background:var(--blue);border-radius:2px}
+.server-list-banner-copy{min-width:0;flex:1;display:flex;align-items:center;gap:12px}
+.server-list-banner-copy>.ico{color:#fff}
+.server-list-banner-copy span{min-width:0;display:grid;gap:2px}
+.server-list-banner-copy b{font-size:14px}
+.server-list-banner-copy small{color:#eaf5fc;font-size:12px}
+.server-list-banner .btn{color:#35434a;background:#f2f3f4;border-color:#f2f3f4}
+.server-list-empty{max-width:960px;min-height:190px;margin:0 auto;color:#edf1f3;background:var(--panel)}
+.server-list-empty h2{color:var(--blue)}
+.server-list-empty p{color:#d0d7db}
+.server-list-content .grid{max-width:960px;margin:0 auto;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),500px));justify-content:center;gap:14px}
+.scard{position:relative;overflow:hidden;padding-left:5px;color:#edf1f3;background:var(--panel);border:0;border-radius:2px}
+.scard::before{position:absolute;inset:0 auto 0 0;width:5px;height:auto;background:var(--red)}
+.scard:hover{background:#354650;border-color:transparent}
+.scard.s-online::before{background:var(--green)}
+.scard.s-starting::before,.scard.s-updating::before{background:#ffad42}
+.scard.s-crashed::before{background:var(--red)}
+.scard-name{color:#fff;font-size:18px}
+.scard-meta small,.tile small{color:#bdc7cc}
+.scard-meta b{color:#f4f6f7}
+.scard-actions{border-color:#46545c}
+.scard .status,.scard .muted{color:#c8d1d5}
+.scard a:not(.btn){color:#70b8df}
+
+/* Aternos uses sharp slate panels, blue section titles and light form fields. */
+.panel{color:#edf1f3;background:var(--panel);border:0;border-radius:2px;box-shadow:none}
+.ph{color:var(--blue);background:var(--panel);border-bottom:0;font-size:16px}
+.ph .ico{color:var(--blue)}
+.panel-sub{color:#bdc7cc}
+.empty{color:#edf1f3;background:var(--panel);border:0;border-radius:2px}
+.empty h2{color:var(--blue)}
+.empty p{color:#d0d7db}
+.panel table{color:#edf1f3}
+.panel th{color:#c1cbd0;background:var(--panel-deep);border-color:#45535b}
+.panel td{color:#edf1f3;border-color:#45535b}
+.panel tr.clickable:hover{background:#394951}
+.panel td .ico{color:#a8cfe3}
+.panel .muted{color:#b8c3c9}
+.panel .server-summary-item,.panel .tile{color:#edf1f3;background:var(--panel-deep);border-color:#46545c}
+.panel .server-summary-item small,.panel .tile small{color:#bdc7cc}
+.panel .server-summary-item b,.panel .tile b{color:#fff}
+
+/* Match the compact left rail and centered workspace of Aternos server pages. */
+.server-shell{min-height:calc(100vh - 96px);grid-template-columns:220px minmax(0,1fr)}
+.server-nav{top:96px;height:calc(100vh - 96px);background:var(--nav)}
+.server-nav a.active{background:#394951;border-left-color:var(--red)}
+.server-nav-server{border-left-color:var(--red)}
+.server-main{padding:0 18px 44px;background:var(--canvas)}
+.server-toolbar{min-height:76px;padding:13px 14px 10px}
+.server-toolbar h1{font-size:clamp(27px,2.5vw,36px)}
+.server-shell .panel{color:#edf1f3;background:var(--panel);border:0;border-radius:2px}
+.server-shell .panel .ph{color:var(--blue);background:var(--panel);border-bottom:0}
+.server-shell .panel .ph .ico{color:var(--blue)}
+.server-shell .panel-sub{color:#bdc7cc}
+.server-address-card{min-height:68px;margin:0;padding:11px 15px;color:#edf1f3;background:var(--panel);border-bottom:1px solid #45535b;border-radius:2px 2px 0 0}
+.server-address-copy .eyebrow{color:#b4c0c6}
+.server-address-copy>div{color:#fff}
+.server-address-card .copy-address{color:#35434a;background:#f1f3f4;border-color:#f1f3f4}
+.server-status-widget{margin-top:0;border-radius:0 0 2px 2px}
+.server-details-panel{background:var(--panel)}
+.server-details-panel .ph{color:var(--blue)}
+.rail-panel .pb{color:#edf1f3}
+.rail-panel .notice-status{color:#e3e9ec}
+.rail-panel p{color:#c5cfd4}
+.notice-status.ok,.notice-status.warn{color:#e3e9ec}
+.dashboard-tip{color:#edf1f3;background:var(--panel);border-left-color:var(--blue)}
+.dashboard-tip p{color:#c5cfd4}
+.server-state-badge.state-offline,.server-state-badge.state-crashed{background:var(--red)}
+.server-state-badge.state-online{background:var(--green)}
+.server-primary-action.k-success{color:#fff;background:var(--green);border-color:var(--green)}
+
+/* Player and inventory panels retain Minecraft colors on the Aternos slate. */
+.player-vitals .ph,.player-control .ph{color:var(--blue)}
+.player-info .ph{color:var(--blue);border-bottom:0}
+.player-info-tile{background:var(--panel-deep);border-color:#46545c}
+.flag-row{color:#303b42;background:#f1f3f4}
+.inv-overflow .inv-extra{color:#e1e7e9}
+.statgrid .sr{color:#d6dee2;border-color:#45535b}
+.statgrid .sr span:last-child{color:#edf1f3}
+.bigstat{color:#d6dee2}
+
+/* Give global backup and connection settings the same surface hierarchy. */
+.set-sec{margin:0 0 12px;padding:16px;background:var(--panel);border:0;border-radius:2px;gap:24px}
+.set-sec:first-child{padding-top:16px}
+.set-sec>.lead b,.field>label,.checkrow,.state-row .lbl,.target .tname{color:#edf1f3}
+.set-sec>.lead span,.field>small,.target .tdest{color:#bdc7cc}
+.state-row{border-color:#45535b}
+.chips-row button{color:#e1e7e9;background:var(--panel-deep);border-color:#52616a}
+.preview,.log{color:#e1e7e9;background:var(--panel-deep);border-color:#52616a}
+.target{border-color:#45535b}
+.backup-target-label{color:#c4cdd1}
+.server-shell .crumbs{color:#e3e9ec}
+.server-shell .crumbs .muted{color:#b7c2c8}
+.server-shell .inv-extra{color:#e1e7e9}
+.state-row .lbl{color:#edf1f3}
+.tabs{border-color:#d4d9dc}
+.tabs a{color:#56636a}
+.tabs a.active{color:var(--blue);border-bottom-color:var(--blue)}
+.modal{color:var(--ink);background:#fff}
+
+@media(max-width:980px){
+  .server-nav{top:96px}
+  .set-sec{grid-template-columns:1fr;gap:10px}
+}
+@media(max-width:700px){
+  .top,.top-in{height:auto}
+  .top-in{min-height:64px}
+  .brand{font-size:22px}
+  .brand svg{width:38px;height:38px}
+  #app{min-height:calc(100vh - 108px)}
+  .server-shell{min-height:calc(100vh - 108px)}
+  .server-nav{top:108px}
+  .server-list-heading{min-height:48px;margin:5px 0 2px}
+  .server-list-intro{margin:0 auto 14px}
+  .server-list-banner{margin-bottom:15px;padding:11px;align-items:stretch;flex-direction:column;gap:10px}
+  .server-list-banner .btn{width:100%}
+  .server-list-content .grid{grid-template-columns:minmax(0,1fr)}
+  .server-toolbar{padding:10px 0 8px}
+}
