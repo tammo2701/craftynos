@@ -16,12 +16,14 @@ function h(tag, props, ...kids) {
     else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
     else if (k === 'value') e.value = v;
     else if (v === true) e.setAttribute(k, '');
+    else if (typeof v === 'object') continue;
     else e.setAttribute(k, v);
   }
   for (const k of kids.flat(Infinity)) {
     if (k == null || k === false) continue;
     if (k.nodeType) e.append(k);
     else if (Array.isArray(k)) e.append(...k);
+    else if (typeof k === 'object') continue;
     else e.append(document.createTextNode(String(k)));
   }
   return e;
@@ -630,12 +632,8 @@ function playerView(p, d, hasApi, serverId, refresh, serverRunning) {
       onclick: guard(async () => {
         const result = await send('POST', `/servers/${serverId}/players/${p.uuid}/action`, { action: key });
         if (result.mode === 'online' && (key === 'heal' || key === 'feed')) {
-          const row = out.querySelectorAll('.vitals')[key === 'heal' ? 0 : 1];
-          const kindName = key === 'heal' ? 'heart' : 'food';
-          d[key === 'heal' ? 'health' : 'food'] = 20;
-          row?.querySelector('.vital-value')?.replaceChildren('20/20');
-          row?.querySelectorAll(`.vital-icons .${kindName}`).forEach((item) => item.classList.remove('off'));
-          toast(`${label}: Befehl an Crafty gesendet`);
+          toast(`${label}: Befehl an Crafty übermittelt`);
+          setTimeout(refresh, 1200);
         } else {
           toast(result.mode === 'offline' ? `${label}: Spielerdaten gespeichert` : `${label} ausgeführt`);
           setTimeout(refresh, 350);
@@ -660,15 +658,15 @@ function playerView(p, d, hasApi, serverId, refresh, serverRunning) {
             h('div', { class: 'xp-level' }, `Level ${d.xpLevel}`),
             h('div', { class: 'xpbar' }, h('i', { style: `width:${Math.round(Math.max(0, Math.min(1, Number(d.xpProgress) || 0)) * 100)}%` })),
             h('div', { class: 'vitals' },
-              action('kill', 'Töten', 'x', 'danger', { disabled: !hasApi || !p.online }),
+              h('b', { class: 'vital-label' }, 'Leben'),
               h('div', { class: 'vital-icons' }, hearts),
               h('b', { class: 'vital-value' }, `${hp}/20`),
-              action('heal', 'Heilen', 'heart', 'success')),
+              action('heal', 'Heilen', 'heart', 'success', { disabled: needsOnline })),
             h('div', { class: 'vitals' },
-              action('starve', 'Aushungern', 'food', 'danger'),
+              h('b', { class: 'vital-label' }, 'Hunger'),
               h('div', { class: 'vital-icons' }, foods),
               h('b', { class: 'vital-value' }, `${food}/20`),
-              action('feed', 'Füttern', 'food', 'success')),
+              action('feed', 'Sättigen', 'food', 'success', { disabled: needsOnline })),
             h('div', { class: 'xp-set' }, h('label', {}, 'Erfahrung'), xpInput, btn('Level setzen', { kind: 'ghost', sm: true, onclick: guard(async () => {
               const levels = Number(xpInput.value);
               const result = await send('POST', `/servers/${serverId}/players/${p.uuid}/action`, { action: 'xp', levels });

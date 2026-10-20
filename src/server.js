@@ -340,8 +340,9 @@ app.post(
       if (!player.online && ['heal', 'feed', 'xp', 'gamemode', 'kill', 'starve'].includes(action))
         throw new HttpError(409, 'Der Spieler muss online sein. Für gespeicherte Spielerdaten stoppe den Server zuerst.');
       const commands = {
-        heal: `effect give ${player.name} minecraft:instant_health 1 5 true`,
-        feed: `effect give ${player.name} minecraft:saturation 1 20 true`,
+        // High effect levels fill modded health and food bars as well as vanilla ones.
+        heal: `effect give ${player.name} minecraft:instant_health 2 255 true`,
+        feed: `effect give ${player.name} minecraft:saturation 2 255 true`,
         xp: `experience set ${player.name} ${levels} levels`,
         gamemode: `gamemode ${['survival', 'creative', 'adventure', 'spectator'][gameMode]} ${player.name}`,
         kill: `kill ${player.name}`,
