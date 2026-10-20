@@ -625,6 +625,9 @@ function playerView(p, d, hasApi, serverId, refresh, serverRunning) {
   if (!d.hasData) out.append(h('div', { class: 'empty player-no-data' }, h('h2', {}, 'Keine Spielerdaten'), h('p', {}, 'Für diesen Spieler wurden noch keine Spielerdaten gespeichert.')));
   else {
     const hp = Math.max(0, Math.min(20, Number(d.health) || 0));
+    // Crafty/Minecraft stores health as a float (for example 19.6638).
+    // Keep the display readable so the value cannot run underneath the heal button.
+    const hpLabel = Number.isInteger(hp) ? String(hp) : hp.toFixed(1).replace(/\.0$/, '');
     const food = Math.max(0, Math.min(20, Number(d.food) || 0));
     const hearts = range(0, 10).map((i) => h('span', { class: 'heart' + (hp > i * 2 ? '' : ' off') }, ico('heart', 21)));
     const foods = range(0, 10).map((i) => h('span', { class: 'food' + (food > i * 2 ? '' : ' off') }, ico('food', 20)));
@@ -665,7 +668,7 @@ function playerView(p, d, hasApi, serverId, refresh, serverRunning) {
             h('div', { class: 'vitals' },
               h('b', { class: 'vital-label' }, 'Leben'),
               h('div', { class: 'vital-icons' }, hearts),
-              h('b', { class: 'vital-value' }, `${hp}/20`),
+              h('b', { class: 'vital-value' }, `${hpLabel}/20`),
               action('heal', 'Heilen', 'heart', 'success', { disabled: needsOnline })),
             h('div', { class: 'vitals' },
               h('b', { class: 'vital-label' }, 'Hunger'),

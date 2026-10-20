@@ -522,12 +522,12 @@ textarea{width:100%;min-height:200px;padding:12px;font:12px/1.55 Consolas,monosp
 .player-vitals .pb{container-type:inline-size}
 .player-vitals .xp-level{margin:0 0 8px;color:#fff;font-size:16px;font-weight:700;text-align:center}
 .player-vitals .xpbar{height:10px;background:#53616a;border-radius:2px}.player-vitals .xpbar>i{background:#96c43b}
-.player-vitals .vitals{min-height:66px;margin-top:9px;display:grid;grid-template-columns:58px minmax(0,1fr) 46px auto;align-items:center;gap:8px}
+.player-vitals .vitals{min-height:66px;margin-top:9px;display:grid;grid-template-columns:58px minmax(0,1fr) 56px auto;align-items:center;gap:8px}
 .player-vitals .vital-label{color:#e3e8ea;font-size:12px;font-weight:700}
 .player-vitals .vital-icons{min-width:0;display:flex;align-items:center;gap:clamp(1px,.35cqi,4px)}
 .player-vitals .vital-icons .ico{width:clamp(18px,4.1cqi,27px);height:clamp(18px,4.1cqi,27px)}
 .player-vitals .vitals .heart{color:#f03d59}.player-vitals .vitals .food{color:#ef8057}.player-vitals .vitals .off{color:#64717a}
-.player-vitals .vital-value{margin:0;color:#edf1f3;font-size:13px;font-weight:700;text-align:center;white-space:nowrap}
+.player-vitals .vital-value{min-width:0;margin:0;color:#edf1f3;font-size:13px;font-weight:700;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}
 .player-vitals .player-control-action{min-width:82px;min-height:36px;padding:0 9px;border:0;border-radius:2px;font-size:12px}
 .player-vitals .player-control-action .ico{width:15px;height:15px}
 .player-vitals .k-danger{color:#fff;background:#dc4654}.player-vitals .k-danger:hover:not(:disabled){background:#c73545}
@@ -691,7 +691,7 @@ td.r,th.r{text-align:right}td.r .btn{margin-left:4px}td .ico{margin-right:7px;co
 .player-detail-grid{grid-template-columns:1fr;gap:8px}
 .player-vitals .ph,.player-control .ph{min-height:45px;padding:9px 11px;font-size:16px}
 .player-vitals .pb{padding:9px 8px 11px}
-.player-vitals .vitals{min-height:45px;grid-template-columns:45px minmax(0,1fr) 36px auto;gap:4px}
+.player-vitals .vitals{min-height:45px;grid-template-columns:45px minmax(0,1fr) 42px auto;gap:4px}
 .player-vitals .vital-icons{gap:clamp(0px,.25cqi,2px)}
 .player-vitals .vital-icons .ico{width:clamp(15px,4cqi,22px);height:clamp(15px,4cqi,22px)}
 .player-vitals .player-control-action{min-width:0;min-height:32px;padding:0 7px;font-size:11px}
@@ -705,7 +705,7 @@ table{min-width:590px}.panel:has(table) .pb{overflow-x:auto}
 .modal-bg{padding:8px}.modal{max-height:96vh}.modal .foot{flex-wrap:wrap}
 }
 @media(max-width:390px){
-  .player-vitals .vitals{grid-template-columns:42px minmax(0,1fr) 32px auto;gap:3px}
+  .player-vitals .vitals{grid-template-columns:42px minmax(0,1fr) 38px auto;gap:3px}
   .player-vitals .vital-label,.player-vitals .vital-value{font-size:9px}
   .player-vitals .player-control-action{padding:0 5px;font-size:10px}
 }
